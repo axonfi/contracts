@@ -4,11 +4,11 @@ Solidity contracts for the Axon vault system. Built with [Foundry](https://book.
 
 ## Contracts
 
-| Contract | Description |
-|---|---|
-| `RelayerRegistry` | Axon-controlled whitelist of authorized relayer addresses. All vaults point to this. |
-| `AxonVaultFactory` | Permissionless factory. Any address deploys a vault in one transaction. |
-| `AxonVault` | Per-principal treasury vault. Holds funds, enforces bot spending limits, verifies EIP-712 signed intents. |
+| Contract           | Description                                                                                               |
+| ------------------ | --------------------------------------------------------------------------------------------------------- |
+| `RelayerRegistry`  | Axon-controlled whitelist of authorized relayer addresses. All vaults point to this.                      |
+| `AxonVaultFactory` | Permissionless factory. Any address deploys a vault in one transaction.                                   |
+| `AxonVault`        | Per-principal treasury vault. Holds funds, enforces bot spending limits, verifies EIP-712 signed intents. |
 
 ---
 
@@ -174,11 +174,11 @@ See [docs/deployment-mainnet.md] for the full mainnet checklist (audit sign-off,
 
 ## Deployed Addresses
 
-| Network | RelayerRegistry | AxonVaultFactory |
-|---|---|---|
-| Base Sepolia | — | — |
-| Base Mainnet | — | — |
-| Arbitrum Sepolia | — | — |
-| Arbitrum One | — | — |
+| Network          | RelayerRegistry | AxonVaultFactory |
+| ---------------- | --------------- | ---------------- |
+| Base Sepolia     | —               | —                |
+| Base Mainnet     | —               | —                |
+| Arbitrum Sepolia | —               | —                |
+| Arbitrum One     | —               | —                |
 
 _Addresses will be filled in after each deployment._
