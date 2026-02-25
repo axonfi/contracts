@@ -51,6 +51,8 @@ contract AxonVaultTest is Test {
     bytes32 constant EXECUTE_INTENT_TYPEHASH = keccak256(
         "ExecuteIntent(address bot,address protocol,bytes32 calldataHash,address token,uint256 amount,uint256 deadline,bytes32 ref)"
     );
+    bytes32 constant SWAP_INTENT_TYPEHASH =
+        keccak256("SwapIntent(address bot,address toToken,uint256 minToAmount,uint256 deadline,bytes32 ref)");
 
     // =========================================================================
     // Setup
@@ -149,7 +151,7 @@ contract AxonVaultTest is Test {
     function _executePayment(AxonVault.PaymentIntent memory intent) internal {
         bytes memory sig = _signPayment(BOT_KEY, intent);
         vm.prank(relayer);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
     // =========================================================================
@@ -552,7 +554,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.DestinationNotWhitelisted.selector);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
     function test_removeGlobalDestination_by_operator() public {
@@ -671,7 +673,7 @@ contract AxonVaultTest is Test {
         emit AxonVault.PaymentExecuted(bot, recipient, address(usdc), 100 * USDC_DECIMALS, bytes32("test-ref-001"));
 
         vm.prank(relayer);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
     function test_executePayment_marks_intent_as_used() public {
@@ -686,7 +688,7 @@ contract AxonVaultTest is Test {
         bytes32 intentHash = keccak256(abi.encodePacked("\x19\x01", vault.DOMAIN_SEPARATOR(), structHash));
 
         vm.prank(relayer);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
 
         assertTrue(vault.usedIntents(intentHash));
     }
@@ -701,7 +703,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(attacker);
         vm.expectRevert(AxonVault.NotAuthorizedRelayer.selector);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
     function test_executePayment_reverts_expired_deadline() public {
@@ -717,7 +719,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.DeadlineExpired.selector);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
     function test_executePayment_reverts_inactive_bot() public {
@@ -729,7 +731,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.BotNotActive.selector);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
     function test_executePayment_reverts_invalid_signature() public {
@@ -740,7 +742,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.InvalidSignature.selector);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
     function test_executePayment_reverts_tampered_amount() public {
@@ -752,7 +754,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.InvalidSignature.selector);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
     function test_executePayment_reverts_maxPerTxAmount_exceeded() public {
@@ -762,7 +764,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.MaxPerTxExceeded.selector);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
     function test_executePayment_reverts_replay() public {
@@ -770,12 +772,12 @@ contract AxonVaultTest is Test {
         bytes memory sig = _signPayment(BOT_KEY, intent);
 
         vm.prank(relayer);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
 
         // Second submission — same intent hash
         vm.prank(relayer);
         vm.expectRevert(AxonVault.IntentAlreadyUsed.selector);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
     function test_executePayment_no_replay_check_when_tracking_disabled() public {
@@ -811,11 +813,11 @@ contract AxonVaultTest is Test {
         bytes memory sig = abi.encodePacked(r, s, v);
 
         vm.prank(relayer);
-        noTrackVault.executePayment(intent, sig);
+        noTrackVault.executePayment(intent, sig, address(0), 0, address(0), "");
 
         // Same intent again — should NOT revert (tracking disabled)
         vm.prank(relayer);
-        noTrackVault.executePayment(intent, sig);
+        noTrackVault.executePayment(intent, sig, address(0), 0, address(0), "");
 
         assertEq(usdc.balanceOf(recipient), 200 * USDC_DECIMALS);
     }
@@ -829,7 +831,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert();
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
     // =========================================================================
@@ -868,10 +870,10 @@ contract AxonVaultTest is Test {
     }
 
     // =========================================================================
-    // executeSwapAndPay
+    // executePayment — swap path (Approach B)
     // =========================================================================
 
-    function test_executeSwapAndPay_happy_path() public {
+    function test_executePayment_swap_happy_path() public {
         // Pre-fund the swap router with USDT to give to recipient
         uint256 usdtOut = 495 * USDC_DECIMALS; // ~$495 after slippage
         usdt.mint(address(swapRouter), usdtOut);
@@ -892,12 +894,58 @@ contract AxonVaultTest is Test {
         );
 
         vm.prank(relayer);
-        vault.executeSwapAndPay(intent, sig, address(usdc), 500 * USDC_DECIMALS, address(swapRouter), swapCalldata);
+        vault.executePayment(intent, sig, address(usdc), 500 * USDC_DECIMALS, address(swapRouter), swapCalldata);
 
         assertEq(usdt.balanceOf(recipient), usdtOut);
     }
 
-    function test_executeSwapAndPay_reverts_unapproved_router() public {
+    function test_executePayment_swap_skipped_when_vault_has_enough() public {
+        // Fund vault with USDT directly — no swap needed
+        uint256 amount = 200 * USDC_DECIMALS;
+        usdt.mint(address(vault), amount);
+
+        // Even though relayer provides swap params, contract should skip the swap
+        AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
+            bot: bot,
+            to: recipient,
+            token: address(usdt),
+            amount: amount,
+            deadline: _deadline(),
+            ref: bytes32("direct-usdt")
+        });
+        bytes memory sig = _signPayment(BOT_KEY, intent);
+        // Provide swap params as fallback — should be ignored since vault has enough
+        bytes memory swapCalldata = abi.encodeCall(
+            MockSwapRouter.swap, (address(usdc), 250 * USDC_DECIMALS, address(usdt), amount, recipient)
+        );
+
+        uint256 vaultUsdcBefore = usdc.balanceOf(address(vault));
+        vm.prank(relayer);
+        vault.executePayment(intent, sig, address(usdc), 250 * USDC_DECIMALS, address(swapRouter), swapCalldata);
+
+        // Recipient got USDT via direct transfer, vault's USDC untouched
+        assertEq(usdt.balanceOf(recipient), amount);
+        assertEq(usdc.balanceOf(address(vault)), vaultUsdcBefore);
+    }
+
+    function test_executePayment_reverts_insufficient_balance_no_swap_params() public {
+        // Vault has no USDT and no swap params provided
+        AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
+            bot: bot,
+            to: recipient,
+            token: address(usdt),
+            amount: 100 * USDC_DECIMALS,
+            deadline: _deadline(),
+            ref: bytes32("no-balance")
+        });
+        bytes memory sig = _signPayment(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.InsufficientBalance.selector);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
+    }
+
+    function test_executePayment_swap_reverts_unapproved_router() public {
         address fakeRouter = makeAddr("fakeRouter");
         AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
             bot: bot,
@@ -911,10 +959,10 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.RouterNotApproved.selector);
-        vault.executeSwapAndPay(intent, sig, address(usdc), 100 * USDC_DECIMALS, fakeRouter, "");
+        vault.executePayment(intent, sig, address(usdc), 100 * USDC_DECIMALS, fakeRouter, "");
     }
 
-    function test_executeSwapAndPay_reverts_insufficient_output() public {
+    function test_executePayment_swap_reverts_insufficient_output() public {
         usdt.mint(address(swapRouter), 1_000 * USDC_DECIMALS);
 
         // Bot wants 490 USDT minimum — swapShort delivers only half (~245 USDT) → should revert
@@ -935,23 +983,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.SwapOutputInsufficient.selector);
-        vault.executeSwapAndPay(intent, sig, address(usdc), 500 * USDC_DECIMALS, address(swapRouter), swapCalldata);
-    }
-
-    function test_executeSwapAndPay_reverts_non_relayer() public {
-        AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
-            bot: bot,
-            to: recipient,
-            token: address(usdt),
-            amount: 99 * USDC_DECIMALS,
-            deadline: _deadline(),
-            ref: bytes32("ref")
-        });
-        bytes memory sig = _signPayment(BOT_KEY, intent);
-
-        vm.prank(attacker);
-        vm.expectRevert(AxonVault.NotAuthorizedRelayer.selector);
-        vault.executeSwapAndPay(intent, sig, address(usdc), 100 * USDC_DECIMALS, address(swapRouter), "");
+        vault.executePayment(intent, sig, address(usdc), 500 * USDC_DECIMALS, address(swapRouter), swapCalldata);
     }
 
     // =========================================================================
@@ -1064,7 +1096,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.DestinationBlacklisted.selector);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
     function test_BlacklistTakesPriorityOverWhitelist() public {
@@ -1081,7 +1113,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.DestinationBlacklisted.selector);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
     function test_OnlyOwnerCanRemoveBlacklist() public {
@@ -1112,7 +1144,7 @@ contract AxonVaultTest is Test {
         assertEq(vault.globalBlacklistCount(), 1);
     }
 
-    function test_BlacklistBlocksSwapAndPay() public {
+    function test_BlacklistBlocksSwapPayment() public {
         vm.prank(principal);
         vault.addGlobalBlacklist(recipient);
 
@@ -1134,7 +1166,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.DestinationBlacklisted.selector);
-        vault.executeSwapAndPay(intent, sig, address(usdc), 500 * USDC_DECIMALS, address(swapRouter), swapCalldata);
+        vault.executePayment(intent, sig, address(usdc), 500 * USDC_DECIMALS, address(swapRouter), swapCalldata);
     }
 
     function test_addGlobalBlacklist_reverts_zero_address() public {
@@ -1249,7 +1281,7 @@ contract AxonVaultTest is Test {
         bytes memory sig = _signPayment(ethBotKey, intent);
 
         vm.prank(relayer);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
 
         assertEq(recipient.balance - recipientBefore, 1 ether);
         assertEq(address(vault).balance, 9 ether);
@@ -1271,9 +1303,11 @@ contract AxonVaultTest is Test {
         });
         bytes memory sig = _signPayment(ethBotKey, intent);
 
+        // Approach B: contract checks balance on-chain, reverts with InsufficientBalance
+        // (no swap params provided, vault has 0 ETH)
         vm.prank(relayer);
-        vm.expectRevert(AxonVault.NativeTransferFailed.selector);
-        vault.executePayment(intent, sig);
+        vm.expectRevert(AxonVault.InsufficientBalance.selector);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
     function test_DepositETH_emits_event() public {
@@ -1307,7 +1341,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.SelfPayment.selector);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
     function test_ExecutePayment_RevertsZeroAddress() public {
@@ -1325,7 +1359,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.PaymentToZeroAddress.selector);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
     function test_ExecutePayment_RevertsZeroAmount() public {
@@ -1336,7 +1370,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.ZeroAmount.selector);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
     function test_ExecutePaymentETH_RevertsSelfPayment() public {
@@ -1356,7 +1390,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.SelfPayment.selector);
-        vault.executePayment(intent, sig);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
     // =========================================================================
@@ -1374,6 +1408,17 @@ contract AxonVaultTest is Test {
                 intent.amount,
                 intent.deadline,
                 intent.ref
+            )
+        );
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", vault.DOMAIN_SEPARATOR(), structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privKey, digest);
+        return abi.encodePacked(r, s, v);
+    }
+
+    function _signSwap(uint256 privKey, AxonVault.SwapIntent memory intent) internal view returns (bytes memory) {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                SWAP_INTENT_TYPEHASH, intent.bot, intent.toToken, intent.minToAmount, intent.deadline, intent.ref
             )
         );
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", vault.DOMAIN_SEPARATOR(), structHash));
@@ -1472,7 +1517,7 @@ contract AxonVaultTest is Test {
         uint256 vaultBefore = usdc.balanceOf(address(vault));
 
         vm.prank(relayer);
-        vault.executeProtocol(intent, sig, callData);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
 
         // Vault should have spent collateral
         assertEq(usdc.balanceOf(address(vault)), vaultBefore - collateral);
@@ -1502,7 +1547,7 @@ contract AxonVaultTest is Test {
         emit AxonVault.ProtocolExecuted(bot, address(mockProtocol), address(usdc), collateral, ref);
 
         vm.prank(relayer);
-        vault.executeProtocol(intent, sig, callData);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
     }
 
     function test_executeProtocol_zero_amount_action() public {
@@ -1521,7 +1566,7 @@ contract AxonVaultTest is Test {
         bytes memory sig = _signExecute(BOT_KEY, intent);
 
         vm.prank(relayer);
-        vault.executeProtocol(intent, sig, callData);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
     }
 
     function test_executeProtocol_returns_data() public {
@@ -1540,7 +1585,7 @@ contract AxonVaultTest is Test {
         bytes memory sig = _signExecute(BOT_KEY, intent);
 
         vm.prank(relayer);
-        bytes memory returnData = vault.executeProtocol(intent, sig, callData);
+        bytes memory returnData = vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
 
         // openTrade returns orderId (should be 1 since it's the first call)
         uint256 orderId = abi.decode(returnData, (uint256));
@@ -1566,7 +1611,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(attacker);
         vm.expectRevert(AxonVault.NotAuthorizedRelayer.selector);
-        vault.executeProtocol(intent, sig, callData);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
     }
 
     function test_executeProtocol_reverts_expired_deadline() public {
@@ -1584,7 +1629,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.DeadlineExpired.selector);
-        vault.executeProtocol(intent, sig, callData);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
     }
 
     function test_executeProtocol_reverts_bot_not_active() public {
@@ -1605,7 +1650,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.BotNotActive.selector);
-        vault.executeProtocol(intent, sig, callData);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
     }
 
     function test_executeProtocol_reverts_protocol_not_approved() public {
@@ -1624,7 +1669,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.ProtocolNotApproved.selector);
-        vault.executeProtocol(intent, sig, callData);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
     }
 
     function test_executeProtocol_reverts_calldata_hash_mismatch() public {
@@ -1644,7 +1689,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.CalldataHashMismatch.selector);
-        vault.executeProtocol(intent, sig, differentCallData);
+        vault.executeProtocol(intent, sig, differentCallData, address(0), 0, address(0), "");
     }
 
     function test_executeProtocol_reverts_invalid_signature() public {
@@ -1662,7 +1707,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.InvalidSignature.selector);
-        vault.executeProtocol(intent, sig, callData);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
     }
 
     function test_executeProtocol_reverts_replay() public {
@@ -1679,11 +1724,11 @@ contract AxonVaultTest is Test {
         bytes memory sig = _signExecute(BOT_KEY, intent);
 
         vm.prank(relayer);
-        vault.executeProtocol(intent, sig, callData);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.IntentAlreadyUsed.selector);
-        vault.executeProtocol(intent, sig, callData);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
     }
 
     function test_executeProtocol_reverts_maxPerTx_exceeded() public {
@@ -1703,7 +1748,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.MaxPerTxExceeded.selector);
-        vault.executeProtocol(intent, sig, callData);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
     }
 
     function test_executeProtocol_reverts_when_paused() public {
@@ -1724,7 +1769,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
-        vault.executeProtocol(intent, sig, callData);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
     }
 
     function test_executeProtocol_reverts_protocol_call_failed() public {
@@ -1743,7 +1788,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.ProtocolCallFailed.selector);
-        vault.executeProtocol(intent, sig, callData);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
     }
 
     function test_executeProtocol_maxPerTx_zero_means_no_cap() public {
@@ -1769,7 +1814,7 @@ contract AxonVaultTest is Test {
         bytes memory sig = _signExecute(BOT2_KEY, intent);
 
         vm.prank(relayer);
-        vault.executeProtocol(intent, sig, callData);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
 
         assertEq(usdc.balanceOf(address(mockProtocol)), bigAmount);
     }
@@ -1792,6 +1837,299 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.ProtocolNotApproved.selector);
-        vault.executeProtocol(intent, sig, callData);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
+    }
+
+    // =========================================================================
+    // executeProtocol — with pre-swap (Approach B)
+    // =========================================================================
+
+    function test_executeProtocol_with_preswap() public {
+        // Vault holds USDC but protocol needs USDT
+        uint256 collateral = 500 * USDC_DECIMALS;
+        usdt.mint(address(swapRouter), collateral); // fund router with USDT output
+
+        bytes memory callData = abi.encodeCall(MockProtocol.openTrade, (address(usdt), collateral, 1, true, 50));
+
+        AxonVault.ExecuteIntent memory intent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(mockProtocol),
+            calldataHash: keccak256(callData),
+            token: address(usdt),
+            amount: collateral,
+            deadline: _deadline(),
+            ref: bytes32("preswap-trade")
+        });
+        bytes memory sig = _signExecute(BOT_KEY, intent);
+
+        // Swap USDC→USDT, output goes to vault (not recipient), then vault approves protocol
+        bytes memory swapCalldata = abi.encodeCall(
+            MockSwapRouter.swap, (address(usdc), 510 * USDC_DECIMALS, address(usdt), collateral, address(vault))
+        );
+
+        uint256 vaultUsdcBefore = usdc.balanceOf(address(vault));
+
+        vm.prank(relayer);
+        vault.executeProtocol(
+            intent, sig, callData, address(usdc), 510 * USDC_DECIMALS, address(swapRouter), swapCalldata
+        );
+
+        // Protocol received USDT
+        assertEq(usdt.balanceOf(address(mockProtocol)), collateral);
+        // Vault spent USDC on the swap
+        assertLt(usdc.balanceOf(address(vault)), vaultUsdcBefore);
+        // Approval cleaned up
+        assertEq(usdt.allowance(address(vault), address(mockProtocol)), 0);
+    }
+
+    function test_executeProtocol_preswap_skipped_when_vault_has_enough() public {
+        // Fund vault with USDT directly — no swap needed
+        uint256 collateral = 200 * USDC_DECIMALS;
+        usdt.mint(address(vault), collateral);
+
+        bytes memory callData = abi.encodeCall(MockProtocol.openTrade, (address(usdt), collateral, 0, true, 10));
+
+        AxonVault.ExecuteIntent memory intent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(mockProtocol),
+            calldataHash: keccak256(callData),
+            token: address(usdt),
+            amount: collateral,
+            deadline: _deadline(),
+            ref: bytes32("no-swap-needed")
+        });
+        bytes memory sig = _signExecute(BOT_KEY, intent);
+
+        // Provide swap params as fallback — should be skipped
+        bytes memory swapCalldata = abi.encodeCall(
+            MockSwapRouter.swap, (address(usdc), 250 * USDC_DECIMALS, address(usdt), collateral, address(vault))
+        );
+
+        uint256 vaultUsdcBefore = usdc.balanceOf(address(vault));
+
+        vm.prank(relayer);
+        vault.executeProtocol(
+            intent, sig, callData, address(usdc), 250 * USDC_DECIMALS, address(swapRouter), swapCalldata
+        );
+
+        // Protocol got USDT, vault USDC untouched (swap was skipped)
+        assertEq(usdt.balanceOf(address(mockProtocol)), collateral);
+        assertEq(usdc.balanceOf(address(vault)), vaultUsdcBefore);
+    }
+
+    // =========================================================================
+    // executeSwap — standalone in-vault rebalancing
+    // =========================================================================
+
+    function test_executeSwap_happy_path() public {
+        uint256 minOutput = 490 * USDC_DECIMALS;
+        usdt.mint(address(swapRouter), minOutput); // fund router with USDT
+
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot,
+            toToken: address(usdt),
+            minToAmount: minOutput,
+            deadline: _deadline(),
+            ref: bytes32("rebalance-001")
+        });
+        bytes memory sig = _signSwap(BOT_KEY, intent);
+
+        // Swap USDC→USDT, output stays in vault
+        bytes memory swapCalldata = abi.encodeCall(
+            MockSwapRouter.swap, (address(usdc), 500 * USDC_DECIMALS, address(usdt), minOutput, address(vault))
+        );
+
+        vm.prank(relayer);
+        vault.executeSwap(intent, sig, address(usdc), 500 * USDC_DECIMALS, address(swapRouter), swapCalldata);
+
+        // Vault received USDT
+        assertEq(usdt.balanceOf(address(vault)), minOutput);
+    }
+
+    function test_executeSwap_emits_event() public {
+        uint256 minOutput = 490 * USDC_DECIMALS;
+        usdt.mint(address(swapRouter), minOutput);
+
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot, toToken: address(usdt), minToAmount: minOutput, deadline: _deadline(), ref: bytes32("swap-event")
+        });
+        bytes memory sig = _signSwap(BOT_KEY, intent);
+        bytes memory swapCalldata = abi.encodeCall(
+            MockSwapRouter.swap, (address(usdc), 500 * USDC_DECIMALS, address(usdt), minOutput, address(vault))
+        );
+
+        vm.expectEmit(true, false, false, true);
+        emit AxonVault.SwapExecuted(
+            bot, address(usdc), address(usdt), 500 * USDC_DECIMALS, minOutput, bytes32("swap-event")
+        );
+
+        vm.prank(relayer);
+        vault.executeSwap(intent, sig, address(usdc), 500 * USDC_DECIMALS, address(swapRouter), swapCalldata);
+    }
+
+    function test_executeSwap_reverts_zero_amount() public {
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot, toToken: address(usdt), minToAmount: 0, deadline: _deadline(), ref: bytes32("ref")
+        });
+        bytes memory sig = _signSwap(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.ZeroAmount.selector);
+        vault.executeSwap(intent, sig, address(usdc), 100 * USDC_DECIMALS, address(swapRouter), "");
+    }
+
+    function test_executeSwap_reverts_expired_deadline() public {
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot,
+            toToken: address(usdt),
+            minToAmount: 100 * USDC_DECIMALS,
+            deadline: block.timestamp - 1,
+            ref: bytes32("ref")
+        });
+        bytes memory sig = _signSwap(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.DeadlineExpired.selector);
+        vault.executeSwap(intent, sig, address(usdc), 100 * USDC_DECIMALS, address(swapRouter), "");
+    }
+
+    function test_executeSwap_reverts_unapproved_router() public {
+        address fakeRouter = makeAddr("fakeRouter");
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot,
+            toToken: address(usdt),
+            minToAmount: 100 * USDC_DECIMALS,
+            deadline: _deadline(),
+            ref: bytes32("ref")
+        });
+        bytes memory sig = _signSwap(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.RouterNotApproved.selector);
+        vault.executeSwap(intent, sig, address(usdc), 100 * USDC_DECIMALS, fakeRouter, "");
+    }
+
+    function test_executeSwap_reverts_non_relayer() public {
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot,
+            toToken: address(usdt),
+            minToAmount: 100 * USDC_DECIMALS,
+            deadline: _deadline(),
+            ref: bytes32("ref")
+        });
+        bytes memory sig = _signSwap(BOT_KEY, intent);
+
+        vm.prank(attacker);
+        vm.expectRevert(AxonVault.NotAuthorizedRelayer.selector);
+        vault.executeSwap(intent, sig, address(usdc), 100 * USDC_DECIMALS, address(swapRouter), "");
+    }
+
+    function test_executeSwap_reverts_inactive_bot() public {
+        vm.prank(principal);
+        vault.removeBot(bot);
+
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot,
+            toToken: address(usdt),
+            minToAmount: 100 * USDC_DECIMALS,
+            deadline: _deadline(),
+            ref: bytes32("ref")
+        });
+        bytes memory sig = _signSwap(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.BotNotActive.selector);
+        vault.executeSwap(intent, sig, address(usdc), 100 * USDC_DECIMALS, address(swapRouter), "");
+    }
+
+    function test_executeSwap_reverts_invalid_signature() public {
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot,
+            toToken: address(usdt),
+            minToAmount: 100 * USDC_DECIMALS,
+            deadline: _deadline(),
+            ref: bytes32("ref")
+        });
+        bytes memory sig = _signSwap(OPERATOR_KEY, intent); // wrong key
+
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.InvalidSignature.selector);
+        vault.executeSwap(intent, sig, address(usdc), 100 * USDC_DECIMALS, address(swapRouter), "");
+    }
+
+    function test_executeSwap_reverts_replay() public {
+        uint256 minOutput = 90 * USDC_DECIMALS;
+        usdt.mint(address(swapRouter), minOutput * 2);
+
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot, toToken: address(usdt), minToAmount: minOutput, deadline: _deadline(), ref: bytes32("ref")
+        });
+        bytes memory sig = _signSwap(BOT_KEY, intent);
+        bytes memory swapCalldata = abi.encodeCall(
+            MockSwapRouter.swap, (address(usdc), 100 * USDC_DECIMALS, address(usdt), minOutput, address(vault))
+        );
+
+        vm.prank(relayer);
+        vault.executeSwap(intent, sig, address(usdc), 100 * USDC_DECIMALS, address(swapRouter), swapCalldata);
+
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.IntentAlreadyUsed.selector);
+        vault.executeSwap(intent, sig, address(usdc), 100 * USDC_DECIMALS, address(swapRouter), swapCalldata);
+    }
+
+    function test_executeSwap_reverts_maxPerTx_exceeded() public {
+        // Bot's maxPerTxAmount is $2k
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot,
+            toToken: address(usdt),
+            minToAmount: 3_000 * USDC_DECIMALS, // exceeds $2k cap
+            deadline: _deadline(),
+            ref: bytes32("ref")
+        });
+        bytes memory sig = _signSwap(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.MaxPerTxExceeded.selector);
+        vault.executeSwap(intent, sig, address(usdc), 3_100 * USDC_DECIMALS, address(swapRouter), "");
+    }
+
+    function test_executeSwap_reverts_insufficient_output() public {
+        usdt.mint(address(swapRouter), 1_000 * USDC_DECIMALS);
+
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot,
+            toToken: address(usdt),
+            minToAmount: 490 * USDC_DECIMALS,
+            deadline: _deadline(),
+            ref: bytes32("ref")
+        });
+        bytes memory sig = _signSwap(BOT_KEY, intent);
+        // swapShort delivers only half
+        bytes memory swapCalldata = abi.encodeCall(
+            MockSwapRouter.swapShort,
+            (address(usdc), 500 * USDC_DECIMALS, address(usdt), 500 * USDC_DECIMALS, address(vault))
+        );
+
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.SwapOutputInsufficient.selector);
+        vault.executeSwap(intent, sig, address(usdc), 500 * USDC_DECIMALS, address(swapRouter), swapCalldata);
+    }
+
+    function test_executeSwap_reverts_when_paused() public {
+        vm.prank(principal);
+        vault.pause();
+
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot,
+            toToken: address(usdt),
+            minToAmount: 100 * USDC_DECIMALS,
+            deadline: _deadline(),
+            ref: bytes32("ref")
+        });
+        bytes memory sig = _signSwap(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
+        vault.executeSwap(intent, sig, address(usdc), 100 * USDC_DECIMALS, address(swapRouter), "");
     }
 }

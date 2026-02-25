@@ -19,7 +19,7 @@ import "./interfaces/IAxonRegistry.sol";
 ///         relayer reads limits from the contract, not its own database.
 ///
 ///         Security model:
-///         - Only authorized relayers (AxonRegistry) can call executePayment/executeSwapAndPay
+///         - Only authorized relayers (AxonRegistry) can call executePayment/executeProtocol/executeSwap
 ///         - Bots never hold ETH or submit transactions directly
 ///         - maxPerTxAmount is enforced on-chain (hard cap)
 ///         - Destination whitelist enforced on-chain
@@ -44,6 +44,9 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     bytes32 private constant EXECUTE_INTENT_TYPEHASH = keccak256(
         "ExecuteIntent(address bot,address protocol,bytes32 calldataHash,address token,uint256 amount,uint256 deadline,bytes32 ref)"
     );
+
+    bytes32 private constant SWAP_INTENT_TYPEHASH =
+        keccak256("SwapIntent(address bot,address toToken,uint256 minToAmount,uint256 deadline,bytes32 ref)");
 
     // =========================================================================
     // Structs
@@ -105,6 +108,16 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         bytes32 calldataHash; // keccak256 of the calldata the relayer will submit
         address token; // token to approve to protocol (ignored if amount == 0)
         uint256 amount; // approval amount (0 = no approval needed)
+        uint256 deadline;
+        bytes32 ref;
+    }
+
+    /// @notice Signed swap intent — bot authorizes an in-vault token swap (rebalancing).
+    ///         Swap keeps the output token in the vault — nothing is sent to a recipient.
+    struct SwapIntent {
+        address bot;
+        address toToken; // desired output token to receive in vault
+        uint256 minToAmount; // minimum output (slippage protection, enforced on-chain)
         uint256 deadline;
         bytes32 ref;
     }
@@ -188,6 +201,9 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     event ProtocolAdded(address indexed protocol);
     event ProtocolRemoved(address indexed protocol);
     event ProtocolExecuted(address indexed bot, address indexed protocol, address token, uint256 amount, bytes32 ref);
+    event SwapExecuted(
+        address indexed bot, address fromToken, address toToken, uint256 fromAmount, uint256 toAmount, bytes32 ref
+    );
 
     // =========================================================================
     // Errors
@@ -223,6 +239,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     error CalldataHashMismatch();
     error AlreadyApprovedProtocol();
     error ProtocolNotInList();
+    error InsufficientBalance();
 
     // =========================================================================
     // Modifiers
@@ -495,19 +512,28 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     // =========================================================================
 
     // =========================================================================
-    // Execute payment
+    // Execute payment (Approach B — handles both direct and swap+pay)
     // =========================================================================
 
-    /// @notice Execute a bot's signed payment intent. Only callable by authorized relayers.
-    ///         On-chain enforcement: signature validity, bot active, deadline, maxPerTxAmount,
-    ///         destination whitelist, optional intent deduplication.
-    ///         Off-chain enforcement by relayer: daily limits, velocity, AI verification.
-    function executePayment(PaymentIntent calldata intent, bytes calldata signature)
-        external
-        nonReentrant
-        whenNotPaused
-        onlyRelayer
-    {
+    /// @notice Execute a bot's signed payment intent. Handles both direct transfers and swap+pay atomically.
+    ///         Contract checks vault balance on-chain: if enough of the desired output token, transfers directly.
+    ///         If insufficient, swaps via the provided DEX router, then verifies recipient received >= intent.amount.
+    ///         Pass fromToken=address(0) for direct-only (reverts with InsufficientBalance if vault lacks funds).
+    ///
+    /// @param intent       PaymentIntent signed by the bot. `token` = desired output, `amount` = minimum to deliver.
+    /// @param signature    Bot's EIP-712 signature over the PaymentIntent.
+    /// @param fromToken    Token the vault will swap from (address(0) = no swap, direct transfer only).
+    /// @param maxFromAmount Max input the vault will spend on the swap (ignored if no swap needed).
+    /// @param swapRouter   Approved DEX router (ignored if no swap needed).
+    /// @param swapCalldata Encoded swap call (ignored if no swap needed).
+    function executePayment(
+        PaymentIntent calldata intent,
+        bytes calldata signature,
+        address fromToken,
+        uint256 maxFromAmount,
+        address swapRouter,
+        bytes calldata swapCalldata
+    ) external nonReentrant whenNotPaused onlyRelayer {
         if (intent.amount == 0) revert ZeroAmount();
         if (intent.to == address(this)) revert SelfPayment();
         if (intent.to == address(0)) revert PaymentToZeroAddress();
@@ -538,52 +564,78 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         // Destination whitelist — enforced on-chain
         _checkDestination(intent.bot, intent.to);
 
-        _transferOut(intent.token, intent.to, intent.amount);
+        // Check vault balance — if enough, direct transfer; otherwise swap+pay
+        uint256 vaultBalance =
+            (intent.token == NATIVE_ETH) ? address(this).balance : IERC20(intent.token).balanceOf(address(this));
 
-        emit PaymentExecuted(intent.bot, intent.to, intent.token, intent.amount, intent.ref);
+        if (vaultBalance >= intent.amount) {
+            // Direct transfer — vault has enough of the desired token
+            _transferOut(intent.token, intent.to, intent.amount);
+            emit PaymentExecuted(intent.bot, intent.to, intent.token, intent.amount, intent.ref);
+        } else if (fromToken != address(0)) {
+            // Swap needed — vault doesn't have enough of the output token
+            if (!IAxonRegistry(axonRegistry).isApprovedSwapRouter(swapRouter)) revert RouterNotApproved();
+
+            // Snapshot balances before swap
+            uint256 toBalanceBefore =
+                (intent.token == NATIVE_ETH) ? intent.to.balance : IERC20(intent.token).balanceOf(intent.to);
+            uint256 fromBalanceBefore =
+                (fromToken == NATIVE_ETH) ? address(this).balance : IERC20(fromToken).balanceOf(address(this));
+
+            _doSwap(fromToken, maxFromAmount, swapRouter, swapCalldata);
+
+            // Verify recipient received at least intent.amount of the desired output
+            uint256 toBalanceAfter =
+                (intent.token == NATIVE_ETH) ? intent.to.balance : IERC20(intent.token).balanceOf(intent.to);
+            uint256 fromBalanceAfter =
+                (fromToken == NATIVE_ETH) ? address(this).balance : IERC20(fromToken).balanceOf(address(this));
+            uint256 toAmount = toBalanceAfter - toBalanceBefore;
+            uint256 fromAmount = fromBalanceBefore - fromBalanceAfter;
+            if (toAmount < intent.amount) revert SwapOutputInsufficient();
+
+            emit SwapPaymentExecuted(intent.bot, intent.to, fromToken, intent.token, fromAmount, toAmount, intent.ref);
+        } else {
+            // Not enough balance and no swap params — relayer should retry with swap params
+            revert InsufficientBalance();
+        }
     }
 
     // =========================================================================
-    // Execute swap and pay (same-chain)
+    // Execute swap (standalone in-vault rebalancing)
     // =========================================================================
 
-    /// @notice Execute a bot's signed payment intent via a DEX swap when the vault lacks the output token.
-    ///         Bot signs a standard PaymentIntent specifying the desired output: token, amount, recipient.
-    ///         The relayer transparently supplies swap routing — the bot never needs to know what the vault holds.
-    ///         On-chain: verifies PaymentIntent signature, router approved, recipient received >= intent.amount.
+    /// @notice Execute a standalone in-vault token swap. Output stays in the vault (not sent to a recipient).
+    ///         Used for treasury rebalancing — e.g. swap USDC → WBTC before opening a GMX trade.
+    ///         Bot signs a SwapIntent with minToAmount for slippage protection; contract verifies output on-chain.
     ///
-    /// @param intent       Standard PaymentIntent signed by the bot. `token` = desired output token,
-    ///                     `amount` = minimum the recipient must receive (slippage guarantee).
-    /// @param signature    Bot's EIP-712 signature over the PaymentIntent.
-    /// @param fromToken    Token the vault holds and will swap from (relayer-supplied, not signed by bot).
-    /// @param maxFromAmount Max input the vault will spend on the swap (relayer-supplied).
-    /// @param swapRouter   Approved DEX router to call (relayer-supplied).
-    /// @param swapCalldata Encoded swap call to execute against swapRouter (relayer-supplied).
-    function executeSwapAndPay(
-        PaymentIntent calldata intent,
+    /// @param intent       SwapIntent signed by the bot. `toToken` = desired output, `minToAmount` = slippage floor.
+    /// @param signature    Bot's EIP-712 signature over the SwapIntent.
+    /// @param fromToken    Token the vault will sell (relayer-supplied).
+    /// @param maxFromAmount Max input the vault will spend (relayer-supplied).
+    /// @param swapRouter   Approved DEX router (relayer-supplied).
+    /// @param swapCalldata Encoded swap call (relayer-supplied).
+    function executeSwap(
+        SwapIntent calldata intent,
         bytes calldata signature,
         address fromToken,
         uint256 maxFromAmount,
         address swapRouter,
         bytes calldata swapCalldata
     ) external nonReentrant whenNotPaused onlyRelayer {
-        if (intent.amount == 0) revert ZeroAmount();
-        if (intent.to == address(this)) revert SelfPayment();
-        if (intent.to == address(0)) revert PaymentToZeroAddress();
+        if (intent.minToAmount == 0) revert ZeroAmount();
         if (block.timestamp > intent.deadline) revert DeadlineExpired();
         if (!IAxonRegistry(axonRegistry).isApprovedSwapRouter(swapRouter)) revert RouterNotApproved();
 
         BotConfig storage bot = _bots[intent.bot];
         if (!bot.isActive) revert BotNotActive();
 
-        // Verify EIP-712 PaymentIntent signature — same typehash as executePayment
+        // Verify EIP-712 signature
         bytes32 structHash = keccak256(
             abi.encode(
-                PAYMENT_INTENT_TYPEHASH, intent.bot, intent.to, intent.token, intent.amount, intent.deadline, intent.ref
+                SWAP_INTENT_TYPEHASH, intent.bot, intent.toToken, intent.minToAmount, intent.deadline, intent.ref
             )
         );
         bytes32 intentHash = _hashTypedDataV4(structHash);
-
         if (intentHash.recover(signature) != intent.bot) revert InvalidSignature();
 
         if (trackUsedIntents) {
@@ -591,39 +643,22 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
             usedIntents[intentHash] = true;
         }
 
-        // Per-tx cap applies to the desired output amount
-        if (bot.maxPerTxAmount > 0 && intent.amount > bot.maxPerTxAmount) revert MaxPerTxExceeded();
+        // Per-tx cap on swap output amount
+        if (bot.maxPerTxAmount > 0 && intent.minToAmount > bot.maxPerTxAmount) revert MaxPerTxExceeded();
 
-        // Destination whitelist check
-        _checkDestination(intent.bot, intent.to);
-
-        // Snapshot balances before swap (use address.balance for native ETH)
+        // Snapshot vault balance of toToken before swap
         uint256 toBalanceBefore =
-            (intent.token == NATIVE_ETH) ? intent.to.balance : IERC20(intent.token).balanceOf(intent.to);
-        uint256 fromBalanceBefore =
-            (fromToken == NATIVE_ETH) ? address(this).balance : IERC20(fromToken).balanceOf(address(this));
+            (intent.toToken == NATIVE_ETH) ? address(this).balance : IERC20(intent.toToken).balanceOf(address(this));
 
-        // Execute swap — send ETH value if fromToken is native, otherwise approve ERC-20
-        if (fromToken == NATIVE_ETH) {
-            (bool success,) = swapRouter.call{ value: maxFromAmount }(swapCalldata);
-            if (!success) revert SwapFailed();
-        } else {
-            IERC20(fromToken).forceApprove(swapRouter, maxFromAmount);
-            (bool success,) = swapRouter.call(swapCalldata);
-            if (!success) revert SwapFailed();
-            IERC20(fromToken).forceApprove(swapRouter, 0);
-        }
+        _doSwap(fromToken, maxFromAmount, swapRouter, swapCalldata);
 
-        // Verify recipient received at least intent.amount of the desired output
+        // Verify vault received at least minToAmount
         uint256 toBalanceAfter =
-            (intent.token == NATIVE_ETH) ? intent.to.balance : IERC20(intent.token).balanceOf(intent.to);
-        uint256 fromBalanceAfter =
-            (fromToken == NATIVE_ETH) ? address(this).balance : IERC20(fromToken).balanceOf(address(this));
-        uint256 toAmount = toBalanceAfter - toBalanceBefore;
-        uint256 fromAmount = fromBalanceBefore - fromBalanceAfter;
-        if (toAmount < intent.amount) revert SwapOutputInsufficient();
+            (intent.toToken == NATIVE_ETH) ? address(this).balance : IERC20(intent.toToken).balanceOf(address(this));
+        uint256 toReceived = toBalanceAfter - toBalanceBefore;
+        if (toReceived < intent.minToAmount) revert SwapOutputInsufficient();
 
-        emit SwapPaymentExecuted(intent.bot, intent.to, fromToken, intent.token, fromAmount, toAmount, intent.ref);
+        emit SwapExecuted(intent.bot, fromToken, intent.toToken, maxFromAmount, toReceived, intent.ref);
     }
 
     // =========================================================================
@@ -633,20 +668,26 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     /// @notice Execute an arbitrary DeFi protocol call on behalf of a bot.
     ///         Bot signs an ExecuteIntent specifying the protocol, calldata hash, and token approval.
     ///         The relayer supplies the actual calldata; the contract verifies the hash matches.
+    ///         Optionally performs a pre-swap if the vault doesn't hold enough of the required token.
     ///
-    ///         Flow: approve token to protocol (if amount > 0) → call protocol with calldata → revoke approval.
-    ///         The bot builds calldata off-chain (Axon relayer is protocol-agnostic).
+    ///         Flow: [optional: swap to get required token] → approve token to protocol → call protocol → revoke.
     ///
-    /// @param intent     ExecuteIntent signed by the bot.
-    /// @param signature  Bot's EIP-712 signature over the ExecuteIntent.
-    /// @param callData   Actual calldata to send to the protocol. keccak256(callData) must match intent.calldataHash.
-    function executeProtocol(ExecuteIntent calldata intent, bytes calldata signature, bytes calldata callData)
-        external
-        nonReentrant
-        whenNotPaused
-        onlyRelayer
-        returns (bytes memory)
-    {
+    /// @param intent       ExecuteIntent signed by the bot.
+    /// @param signature    Bot's EIP-712 signature over the ExecuteIntent.
+    /// @param callData     Actual calldata to send to the protocol. keccak256(callData) must match intent.calldataHash.
+    /// @param fromToken    Token to swap from if pre-swap needed (address(0) = no pre-swap).
+    /// @param maxFromAmount Max input for the pre-swap (ignored if no swap needed).
+    /// @param swapRouter   Approved DEX router for pre-swap (ignored if no swap needed).
+    /// @param swapCalldata Encoded swap call for pre-swap (ignored if no swap needed).
+    function executeProtocol(
+        ExecuteIntent calldata intent,
+        bytes calldata signature,
+        bytes calldata callData,
+        address fromToken,
+        uint256 maxFromAmount,
+        address swapRouter,
+        bytes calldata swapCalldata
+    ) external nonReentrant whenNotPaused onlyRelayer returns (bytes memory) {
         if (block.timestamp > intent.deadline) revert DeadlineExpired();
         if (!approvedProtocols[intent.protocol]) revert ProtocolNotApproved();
 
@@ -682,6 +723,15 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         // Per-tx cap on approval amount (if applicable)
         if (intent.amount > 0 && bot.maxPerTxAmount > 0 && intent.amount > bot.maxPerTxAmount) {
             revert MaxPerTxExceeded();
+        }
+
+        // Pre-swap if vault doesn't have enough of the required token
+        if (fromToken != address(0) && intent.amount > 0) {
+            uint256 vaultBalance = IERC20(intent.token).balanceOf(address(this));
+            if (vaultBalance < intent.amount) {
+                if (!IAxonRegistry(axonRegistry).isApprovedSwapRouter(swapRouter)) revert RouterNotApproved();
+                _doSwap(fromToken, maxFromAmount, swapRouter, swapCalldata);
+            }
         }
 
         // Approve token to protocol if amount > 0 (e.g. USDC for openTrade)
@@ -738,6 +788,21 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     // =========================================================================
     // Internal helpers
     // =========================================================================
+
+    /// @dev Execute a swap via an approved DEX router. Caller must verify outcomes.
+    function _doSwap(address fromToken, uint256 maxFromAmount, address swapRouter, bytes calldata swapCalldata)
+        internal
+    {
+        if (fromToken == NATIVE_ETH) {
+            (bool success,) = swapRouter.call{ value: maxFromAmount }(swapCalldata);
+            if (!success) revert SwapFailed();
+        } else {
+            IERC20(fromToken).forceApprove(swapRouter, maxFromAmount);
+            (bool success,) = swapRouter.call(swapCalldata);
+            if (!success) revert SwapFailed();
+            IERC20(fromToken).forceApprove(swapRouter, 0);
+        }
+    }
 
     /// @dev Transfer tokens or native ETH to a recipient.
     function _transferOut(address token, address to, uint256 amount) internal {
