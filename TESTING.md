@@ -52,34 +52,41 @@ The contract checks `IERC20(intent.token).balanceOf(intent.to)` before and after
 
 ```typescript
 const swapCalldata = encodeFunctionData({
-  abi: [{
-    type: 'function',
-    name: 'exactOutputSingle',
-    inputs: [{
-      name: 'params', type: 'tuple',
-      components: [
-        { name: 'tokenIn', type: 'address' },
-        { name: 'tokenOut', type: 'address' },
-        { name: 'fee', type: 'uint24' },
-        { name: 'recipient', type: 'address' },
-        { name: 'amountOut', type: 'uint256' },
-        { name: 'amountInMaximum', type: 'uint256' },
-        { name: 'sqrtPriceLimitX96', type: 'uint160' },
+  abi: [
+    {
+      type: 'function',
+      name: 'exactOutputSingle',
+      inputs: [
+        {
+          name: 'params',
+          type: 'tuple',
+          components: [
+            { name: 'tokenIn', type: 'address' },
+            { name: 'tokenOut', type: 'address' },
+            { name: 'fee', type: 'uint24' },
+            { name: 'recipient', type: 'address' },
+            { name: 'amountOut', type: 'uint256' },
+            { name: 'amountInMaximum', type: 'uint256' },
+            { name: 'sqrtPriceLimitX96', type: 'uint160' },
+          ],
+        },
       ],
-    }],
-    outputs: [{ name: 'amountIn', type: 'uint256' }],
-    stateMutability: 'payable',
-  }],
+      outputs: [{ name: 'amountIn', type: 'uint256' }],
+      stateMutability: 'payable',
+    },
+  ],
   functionName: 'exactOutputSingle',
-  args: [{
-    tokenIn: USDC,
-    tokenOut: WETH,
-    fee: 3000,
-    recipient: PAYMENT_RECIPIENT,  // NOT the vault
-    amountOut: WETH_AMOUNT,
-    amountInMaximum: MAX_USDC,
-    sqrtPriceLimitX96: 0n,
-  }],
+  args: [
+    {
+      tokenIn: USDC,
+      tokenOut: WETH,
+      fee: 3000,
+      recipient: PAYMENT_RECIPIENT, // NOT the vault
+      amountOut: WETH_AMOUNT,
+      amountInMaximum: MAX_USDC,
+      sqrtPriceLimitX96: 0n,
+    },
+  ],
 });
 ```
 
@@ -110,7 +117,7 @@ else                                → revert InsufficientBalance
 const domain = {
   name: 'AxonVault',
   version: '1',
-  chainId: 84532,  // Base Sepolia
+  chainId: 84532, // Base Sepolia
   verifyingContract: VAULT_ADDRESS,
 };
 
@@ -134,6 +141,7 @@ const types = {
 ## Verified Test (2026-02-25)
 
 Atomic USDC→WETH swap+payment on Base Sepolia:
+
 - TX: `0xa74f09a1dc2b2bde4bc8b6c893be69bdbbe0c879edbb04dd5e76524497577df9`
 - Vault spent 0.089222 USDC → recipient received 0.001 WETH
 - Pool: USDC/WETH 0.3% fee tier
@@ -141,24 +149,24 @@ Atomic USDC→WETH swap+payment on Base Sepolia:
 
 ## Pool Addresses (Base Sepolia)
 
-| Pair | Fee | Pool Address |
-|------|-----|-------------|
+| Pair      | Fee         | Pool Address                                 |
+| --------- | ----------- | -------------------------------------------- |
 | USDC/WETH | 0.05% (500) | `0x94bfc0574FF48E92cE43d495376C477B1d0EEeC0` |
 | USDC/WETH | 0.3% (3000) | `0x46880b404CD35c165EDdefF7421019F8dD25F4Ad` |
-| USDC/WETH | 1% (10000) | `0x4664755562152EDDa3a3073850FB62835451926a` |
+| USDC/WETH | 1% (10000)  | `0x4664755562152EDDa3a3073850FB62835451926a` |
 
 ## Common Errors
 
-| Error | Cause |
-|-------|-------|
-| `NotAuthorizedRelayer` | Delegator not registered on AxonRegistry |
-| `BotNotActive` | Bot not added to vault via `addBot` |
-| `InvalidSignature` | Wrong EIP-712 domain (check chainId, verifyingContract) |
-| `RouterNotApproved` | Swap router not approved on AxonRegistry |
-| `SwapFailed` | Uniswap call reverted (no liquidity, bad calldata) |
-| `SwapOutputInsufficient` | Swap output < intent.amount (slippage too high) |
-| `InsufficientBalance` | Vault doesn't have the token and no swap params provided |
-| `DeadlineExpired` | Intent deadline passed |
+| Error                    | Cause                                                    |
+| ------------------------ | -------------------------------------------------------- |
+| `NotAuthorizedRelayer`   | Delegator not registered on AxonRegistry                 |
+| `BotNotActive`           | Bot not added to vault via `addBot`                      |
+| `InvalidSignature`       | Wrong EIP-712 domain (check chainId, verifyingContract)  |
+| `RouterNotApproved`      | Swap router not approved on AxonRegistry                 |
+| `SwapFailed`             | Uniswap call reverted (no liquidity, bad calldata)       |
+| `SwapOutputInsufficient` | Swap output < intent.amount (slippage too high)          |
+| `InsufficientBalance`    | Vault doesn't have the token and no swap params provided |
+| `DeadlineExpired`        | Intent deadline passed                                   |
 
 ## Redeployment Checklist
 

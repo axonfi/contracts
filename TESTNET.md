@@ -8,14 +8,14 @@
 
 ## Deployed Addresses (Base Sepolia 84532)
 
-| Contract | Address |
-|----------|---------|
-| AxonRegistry | `0x2ccd97040c1f4D97ac90e8bA8FEe9D0DCf4e3dc3` |
-| AxonVaultFactory | `0x55D71180ed38EBc0E2959840589BF4506A05641a` |
-| Test Vault | `0x1F17b2f2A99e9DfC611B3A012357e56afEAdd348` |
-| USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
-| USDT | `0x323e78f944A9a1FcF3a10efcC5319DBb0bB6e673` |
-| WETH | `0x4200000000000000000000000000000000000006` |
+| Contract                | Address                                      |
+| ----------------------- | -------------------------------------------- |
+| AxonRegistry            | `0x2ccd97040c1f4D97ac90e8bA8FEe9D0DCf4e3dc3` |
+| AxonVaultFactory        | `0x55D71180ed38EBc0E2959840589BF4506A05641a` |
+| Test Vault              | `0x1F17b2f2A99e9DfC611B3A012357e56afEAdd348` |
+| USDC                    | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+| USDT                    | `0x323e78f944A9a1FcF3a10efcC5319DBb0bB6e673` |
+| WETH                    | `0x4200000000000000000000000000000000000006` |
 | Uniswap V3 SwapRouter02 | `0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4` |
 
 ## Redeployment Checklist
