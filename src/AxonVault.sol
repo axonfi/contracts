@@ -38,10 +38,12 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     uint8 public constant MAX_SPENDING_LIMITS = 5;
     address public constant NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
-    bytes32 private constant PAYMENT_INTENT_TYPEHASH = keccak256(
-        "PaymentIntent(address bot,address to,address token,uint256 amount,uint256 deadline,bytes32 ref)"
-    );
+    bytes32 private constant PAYMENT_INTENT_TYPEHASH =
+        keccak256("PaymentIntent(address bot,address to,address token,uint256 amount,uint256 deadline,bytes32 ref)");
 
+    bytes32 private constant EXECUTE_INTENT_TYPEHASH = keccak256(
+        "ExecuteIntent(address bot,address protocol,bytes32 calldataHash,address token,uint256 amount,uint256 deadline,bytes32 ref)"
+    );
 
     // =========================================================================
     // Structs
@@ -49,19 +51,19 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
 
     /// @notice A rolling window spending limit. Stored on-chain, enforced by relayer.
     struct SpendingLimit {
-        uint256 amount;         // max spend in this window (token base units, e.g. USDC 6 decimals)
-        uint256 maxCount;       // max number of transactions in this window (0 = no count limit)
-        uint256 windowSeconds;  // rolling window: 3600=1h, 86400=1d, 604800=1w, 2592000=30d
+        uint256 amount; // max spend in this window (token base units, e.g. USDC 6 decimals)
+        uint256 maxCount; // max number of transactions in this window (0 = no count limit)
+        uint256 windowSeconds; // rolling window: 3600=1h, 86400=1d, 604800=1w, 2592000=30d
     }
 
     /// @notice Per-bot configuration. Policy values stored on-chain for verifiability.
     struct BotConfig {
         bool isActive;
         uint256 registeredAt;
-        uint256 maxPerTxAmount;          // hard cap enforced ON-CHAIN in executePayment (0 = no cap)
-        SpendingLimit[] spendingLimits;  // rolling window limits — stored on-chain, enforced by relayer
-        uint256 aiTriggerThreshold;      // relayer triggers AI scan above this amount (0 = never by amount)
-        bool requireAiVerification;      // relayer always requires AI scan for this bot
+        uint256 maxPerTxAmount; // hard cap enforced ON-CHAIN in executePayment (0 = no cap)
+        SpendingLimit[] spendingLimits; // rolling window limits — stored on-chain, enforced by relayer
+        uint256 aiTriggerThreshold; // relayer triggers AI scan above this amount (0 = never by amount)
+        bool requireAiVerification; // relayer always requires AI scan for this bot
     }
 
     /// @notice Parameters for adding or updating a bot. Mirrors BotConfig minus isActive/registeredAt.
@@ -76,11 +78,11 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     ///         0 in a ceiling field means "no ceiling enforced" for that field,
     ///         EXCEPT maxOperatorBots where 0 means "operator cannot add bots" (restrictive default).
     struct OperatorCeilings {
-        uint256 maxPerTxAmount;      // operator cannot configure a bot's maxPerTxAmount above this
-        uint256 maxBotDailyLimit;    // operator cannot configure a bot's daily limit above this
-        uint256 maxOperatorBots;     // 0 = operator CANNOT add bots. Must be explicitly set by owner.
+        uint256 maxPerTxAmount; // operator cannot configure a bot's maxPerTxAmount above this
+        uint256 maxBotDailyLimit; // operator cannot configure a bot's daily limit above this
+        uint256 maxOperatorBots; // 0 = operator CANNOT add bots. Must be explicitly set by owner.
         uint256 vaultDailyAggregate; // total vault daily outflow cap — relayer reads and enforces (0 = none)
-        uint256 minAiTriggerFloor;   // operator cannot set aiTriggerThreshold above this (0 = no floor)
+        uint256 minAiTriggerFloor; // operator cannot set aiTriggerThreshold above this (0 = no floor)
     }
 
     /// @notice Signed payment intent — bot commits to these exact terms.
@@ -93,6 +95,19 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         bytes32 ref; // keccak256 of off-chain memo; full text stored in relayer PostgreSQL
     }
 
+    /// @notice Signed protocol execution intent — bot commits to exact calldata + token approval.
+    ///         Bot builds calldata off-chain (e.g. Ostium openTrade, GMX createOrder), signs the hash.
+    ///         Relayer submits the actual calldata; contract verifies hash matches what bot signed.
+    ///         `amount` = token approval amount (0 for actions that don't transfer tokens, e.g. closing a trade).
+    struct ExecuteIntent {
+        address bot;
+        address protocol; // target contract (must be in vault's approvedProtocols)
+        bytes32 calldataHash; // keccak256 of the calldata the relayer will submit
+        address token; // token to approve to protocol (ignored if amount == 0)
+        uint256 amount; // approval amount (0 = no approval needed)
+        uint256 deadline;
+        bytes32 ref;
+    }
 
     // =========================================================================
     // Immutable state
@@ -133,6 +148,10 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     // Intent deduplication (only active if trackUsedIntents = true)
     mapping(bytes32 => bool) public usedIntents;
 
+    // Per-vault approved DeFi protocols (owner manages — NOT in AxonRegistry)
+    mapping(address => bool) public approvedProtocols;
+    uint256 public approvedProtocolCount;
+
     // =========================================================================
     // Events
     // =========================================================================
@@ -141,9 +160,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     event BotRemoved(address indexed bot, address indexed removedBy);
     event BotConfigUpdated(address indexed bot, address indexed updatedBy);
 
-    event PaymentExecuted(
-        address indexed bot, address indexed to, address indexed token, uint256 amount, bytes32 ref
-    );
+    event PaymentExecuted(address indexed bot, address indexed to, address indexed token, uint256 amount, bytes32 ref);
     event SwapPaymentExecuted(
         address indexed bot,
         address indexed to,
@@ -167,6 +184,10 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
 
     event GlobalBlacklistAdded(address indexed destination);
     event GlobalBlacklistRemoved(address indexed destination);
+
+    event ProtocolAdded(address indexed protocol);
+    event ProtocolRemoved(address indexed protocol);
+    event ProtocolExecuted(address indexed bot, address indexed protocol, address token, uint256 amount, bytes32 ref);
 
     // =========================================================================
     // Errors
@@ -197,6 +218,11 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     error SelfPayment();
     error PaymentToZeroAddress();
     error ZeroAmount();
+    error ProtocolNotApproved();
+    error ProtocolCallFailed();
+    error CalldataHashMismatch();
+    error AlreadyApprovedProtocol();
+    error ProtocolNotInList();
 
     // =========================================================================
     // Modifiers
@@ -221,11 +247,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     /// @param _owner           The Principal — vault owner, cold wallet recommended.
     /// @param _axonRegistry    Axon's AxonRegistry for this chain. Immutable.
     /// @param _trackUsedIntents If true, intent hashes are tracked to prevent duplicates.
-    constructor(
-        address _owner,
-        address _axonRegistry,
-        bool _trackUsedIntents
-    )
+    constructor(address _owner, address _axonRegistry, bool _trackUsedIntents)
         Ownable(_owner)
         EIP712("AxonVault", "1")
     {
@@ -400,6 +422,32 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     }
 
     // =========================================================================
+    // Protocol whitelist management (per-vault, NOT in AxonRegistry)
+    // =========================================================================
+
+    /// @notice Approve a DeFi protocol for executeProtocol calls. Owner only (loosening).
+    function addProtocol(address protocol) external onlyOwner {
+        if (protocol == address(0)) revert ZeroAddress();
+        if (approvedProtocols[protocol]) revert AlreadyApprovedProtocol();
+        approvedProtocols[protocol] = true;
+        approvedProtocolCount++;
+        emit ProtocolAdded(protocol);
+    }
+
+    /// @notice Revoke a DeFi protocol. Owner or operator (tightening).
+    function removeProtocol(address protocol) external onlyOwnerOrOperator {
+        if (!approvedProtocols[protocol]) revert ProtocolNotInList();
+        approvedProtocols[protocol] = false;
+        approvedProtocolCount--;
+        emit ProtocolRemoved(protocol);
+    }
+
+    /// @notice Check if a protocol is approved for this vault.
+    function isProtocolApproved(address protocol) external view returns (bool) {
+        return approvedProtocols[protocol];
+    }
+
+    // =========================================================================
     // Pause
     // =========================================================================
 
@@ -418,7 +466,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     // =========================================================================
 
     /// @notice Accept raw ETH transfers (e.g. from swap routers, WETH unwrap, direct sends).
-    receive() external payable {}
+    receive() external payable { }
 
     /// @notice Deposit tokens or native ETH into the vault. Open to anyone — no restriction.
     ///         For native ETH: pass NATIVE_ETH as token, msg.value must equal amount.
@@ -471,13 +519,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         // Verify EIP-712 signature — signer must be the bot address in the intent
         bytes32 structHash = keccak256(
             abi.encode(
-                PAYMENT_INTENT_TYPEHASH,
-                intent.bot,
-                intent.to,
-                intent.token,
-                intent.amount,
-                intent.deadline,
-                intent.ref
+                PAYMENT_INTENT_TYPEHASH, intent.bot, intent.to, intent.token, intent.amount, intent.deadline, intent.ref
             )
         );
         bytes32 intentHash = _hashTypedDataV4(structHash);
@@ -537,13 +579,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         // Verify EIP-712 PaymentIntent signature — same typehash as executePayment
         bytes32 structHash = keccak256(
             abi.encode(
-                PAYMENT_INTENT_TYPEHASH,
-                intent.bot,
-                intent.to,
-                intent.token,
-                intent.amount,
-                intent.deadline,
-                intent.ref
+                PAYMENT_INTENT_TYPEHASH, intent.bot, intent.to, intent.token, intent.amount, intent.deadline, intent.ref
             )
         );
         bytes32 intentHash = _hashTypedDataV4(structHash);
@@ -562,16 +598,14 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         _checkDestination(intent.bot, intent.to);
 
         // Snapshot balances before swap (use address.balance for native ETH)
-        uint256 toBalanceBefore = (intent.token == NATIVE_ETH)
-            ? intent.to.balance
-            : IERC20(intent.token).balanceOf(intent.to);
-        uint256 fromBalanceBefore = (fromToken == NATIVE_ETH)
-            ? address(this).balance
-            : IERC20(fromToken).balanceOf(address(this));
+        uint256 toBalanceBefore =
+            (intent.token == NATIVE_ETH) ? intent.to.balance : IERC20(intent.token).balanceOf(intent.to);
+        uint256 fromBalanceBefore =
+            (fromToken == NATIVE_ETH) ? address(this).balance : IERC20(fromToken).balanceOf(address(this));
 
         // Execute swap — send ETH value if fromToken is native, otherwise approve ERC-20
         if (fromToken == NATIVE_ETH) {
-            (bool success,) = swapRouter.call{value: maxFromAmount}(swapCalldata);
+            (bool success,) = swapRouter.call{ value: maxFromAmount }(swapCalldata);
             if (!success) revert SwapFailed();
         } else {
             IERC20(fromToken).forceApprove(swapRouter, maxFromAmount);
@@ -581,17 +615,92 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         }
 
         // Verify recipient received at least intent.amount of the desired output
-        uint256 toBalanceAfter = (intent.token == NATIVE_ETH)
-            ? intent.to.balance
-            : IERC20(intent.token).balanceOf(intent.to);
-        uint256 fromBalanceAfter = (fromToken == NATIVE_ETH)
-            ? address(this).balance
-            : IERC20(fromToken).balanceOf(address(this));
-        uint256 toAmount   = toBalanceAfter - toBalanceBefore;
+        uint256 toBalanceAfter =
+            (intent.token == NATIVE_ETH) ? intent.to.balance : IERC20(intent.token).balanceOf(intent.to);
+        uint256 fromBalanceAfter =
+            (fromToken == NATIVE_ETH) ? address(this).balance : IERC20(fromToken).balanceOf(address(this));
+        uint256 toAmount = toBalanceAfter - toBalanceBefore;
         uint256 fromAmount = fromBalanceBefore - fromBalanceAfter;
         if (toAmount < intent.amount) revert SwapOutputInsufficient();
 
         emit SwapPaymentExecuted(intent.bot, intent.to, fromToken, intent.token, fromAmount, toAmount, intent.ref);
+    }
+
+    // =========================================================================
+    // Execute protocol action (DeFi interactions)
+    // =========================================================================
+
+    /// @notice Execute an arbitrary DeFi protocol call on behalf of a bot.
+    ///         Bot signs an ExecuteIntent specifying the protocol, calldata hash, and token approval.
+    ///         The relayer supplies the actual calldata; the contract verifies the hash matches.
+    ///
+    ///         Flow: approve token to protocol (if amount > 0) → call protocol with calldata → revoke approval.
+    ///         The bot builds calldata off-chain (Axon relayer is protocol-agnostic).
+    ///
+    /// @param intent     ExecuteIntent signed by the bot.
+    /// @param signature  Bot's EIP-712 signature over the ExecuteIntent.
+    /// @param callData   Actual calldata to send to the protocol. keccak256(callData) must match intent.calldataHash.
+    function executeProtocol(ExecuteIntent calldata intent, bytes calldata signature, bytes calldata callData)
+        external
+        nonReentrant
+        whenNotPaused
+        onlyRelayer
+        returns (bytes memory)
+    {
+        if (block.timestamp > intent.deadline) revert DeadlineExpired();
+        if (!approvedProtocols[intent.protocol]) revert ProtocolNotApproved();
+
+        BotConfig storage bot = _bots[intent.bot];
+        if (!bot.isActive) revert BotNotActive();
+
+        // Verify calldata hash matches what the bot signed
+        if (keccak256(callData) != intent.calldataHash) revert CalldataHashMismatch();
+
+        // Verify EIP-712 signature
+        bytes32 structHash = keccak256(
+            abi.encode(
+                EXECUTE_INTENT_TYPEHASH,
+                intent.bot,
+                intent.protocol,
+                intent.calldataHash,
+                intent.token,
+                intent.amount,
+                intent.deadline,
+                intent.ref
+            )
+        );
+        bytes32 intentHash = _hashTypedDataV4(structHash);
+
+        if (intentHash.recover(signature) != intent.bot) revert InvalidSignature();
+
+        // Optional deduplication
+        if (trackUsedIntents) {
+            if (usedIntents[intentHash]) revert IntentAlreadyUsed();
+            usedIntents[intentHash] = true;
+        }
+
+        // Per-tx cap on approval amount (if applicable)
+        if (intent.amount > 0 && bot.maxPerTxAmount > 0 && intent.amount > bot.maxPerTxAmount) {
+            revert MaxPerTxExceeded();
+        }
+
+        // Approve token to protocol if amount > 0 (e.g. USDC for openTrade)
+        if (intent.amount > 0) {
+            IERC20(intent.token).forceApprove(intent.protocol, intent.amount);
+        }
+
+        // Call the protocol
+        (bool success, bytes memory returnData) = intent.protocol.call(callData);
+        if (!success) revert ProtocolCallFailed();
+
+        // Revoke approval (cleanup)
+        if (intent.amount > 0) {
+            IERC20(intent.token).forceApprove(intent.protocol, 0);
+        }
+
+        emit ProtocolExecuted(intent.bot, intent.protocol, intent.token, intent.amount, intent.ref);
+
+        return returnData;
     }
 
     // =========================================================================
@@ -633,7 +742,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     /// @dev Transfer tokens or native ETH to a recipient.
     function _transferOut(address token, address to, uint256 amount) internal {
         if (token == NATIVE_ETH) {
-            (bool success,) = to.call{value: amount}("");
+            (bool success,) = to.call{ value: amount }("");
             if (!success) revert NativeTransferFailed();
         } else {
             IERC20(token).safeTransfer(to, amount);

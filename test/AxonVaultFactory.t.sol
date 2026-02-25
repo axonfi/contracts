@@ -8,16 +8,16 @@ import "../src/AxonRegistry.sol";
 
 contract AxonVaultFactoryTest is Test {
     AxonVaultFactory factory;
-    AxonRegistry     registry;
+    AxonRegistry registry;
 
     address axonDeployer = makeAddr("axonDeployer");
-    address alice        = makeAddr("alice");
-    address bob          = makeAddr("bob");
-    address attacker     = makeAddr("attacker");
+    address alice = makeAddr("alice");
+    address bob = makeAddr("bob");
+    address attacker = makeAddr("attacker");
 
     function setUp() public {
         registry = new AxonRegistry(axonDeployer);
-        factory  = new AxonVaultFactory(address(registry), axonDeployer);
+        factory = new AxonVaultFactory(address(registry), axonDeployer);
     }
 
     // =========================================================================

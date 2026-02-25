@@ -31,7 +31,7 @@ contract Deploy is Script {
     function run() external {
         // ── Deployer key ─────────────────────────────────────────────────────
         uint256 deployerKey = vm.envUint("PRIVATE_KEY");
-        address deployer    = vm.addr(deployerKey);
+        address deployer = vm.addr(deployerKey);
 
         // ── Owner address ─────────────────────────────────────────────────────
         // On testnet this is typically the deployer itself.

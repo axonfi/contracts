@@ -20,11 +20,7 @@ contract AxonVaultFactory is Ownable2Step {
     mapping(address => address[]) public ownerVaults;
 
     event VaultDeployed(
-        address indexed owner,
-        address indexed vault,
-        uint16 version,
-        address axonRegistry,
-        bool trackUsedIntents
+        address indexed owner, address indexed vault, uint16 version, address axonRegistry, bool trackUsedIntents
     );
 
     error ZeroAddress();

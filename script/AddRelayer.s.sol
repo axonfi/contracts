@@ -20,9 +20,9 @@ import "../src/AxonRegistry.sol";
 ///     -vvvv
 contract AddRelayer is Script {
     function run() external {
-        uint256 ownerKey      = vm.envUint("PRIVATE_KEY");
-        address registryAddr  = vm.envAddress("REGISTRY_ADDRESS");
-        address relayerAddr   = vm.envAddress("RELAYER_ADDRESS");
+        uint256 ownerKey = vm.envUint("PRIVATE_KEY");
+        address registryAddr = vm.envAddress("REGISTRY_ADDRESS");
+        address relayerAddr = vm.envAddress("RELAYER_ADDRESS");
 
         AxonRegistry registry = AxonRegistry(registryAddr);
 

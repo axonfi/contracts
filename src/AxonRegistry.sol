@@ -23,7 +23,7 @@ contract AxonRegistry is IAxonRegistry, Ownable2Step {
     error AlreadyApproved();
     error NotApproved();
 
-    constructor(address initialOwner) Ownable(initialOwner) {}
+    constructor(address initialOwner) Ownable(initialOwner) { }
 
     // =========================================================================
     // Relayer management
