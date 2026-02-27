@@ -223,6 +223,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     error RouterNotApproved();
     error SwapFailed();
     error SwapOutputInsufficient();
+    error OwnerCannotBeBot();
     error OperatorCannotBeOwner();
     error OperatorBotLimitReached();
     error ExceedsOperatorCeiling();
@@ -299,6 +300,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     /// @notice Register a new bot address. Owner can set any config; operator is bounded by ceilings.
     function addBot(address bot, BotConfigParams calldata params) external onlyOwnerOrOperator {
         if (bot == address(0)) revert ZeroAddress();
+        if (bot == owner()) revert OwnerCannotBeBot();
         if (_bots[bot].isActive) revert BotAlreadyExists();
         if (params.spendingLimits.length > MAX_SPENDING_LIMITS) revert TooManySpendingLimits();
 

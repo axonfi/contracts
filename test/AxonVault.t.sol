@@ -630,7 +630,7 @@ contract AxonVaultTest is Test {
         address nativeEth = vault.NATIVE_ETH();
         vm.prank(principal);
         vm.expectRevert(AxonVault.ZeroAmount.selector);
-        vault.deposit{value: 0}(nativeEth, 0, bytes32(0));
+        vault.deposit{ value: 0 }(nativeEth, 0, bytes32(0));
     }
 
     function test_withdraw_by_owner() public {
@@ -2192,8 +2192,8 @@ contract AxonVaultTest is Test {
     // Edge cases — role overlap & identity
     // =========================================================================
 
-    /// @dev Owner can register themselves as a bot — no restriction in contract.
-    function test_owner_can_register_as_bot() public {
+    /// @dev Owner cannot register themselves as a bot — enforces key separation.
+    function test_addBot_reverts_owner_as_bot() public {
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 1_000 * USDC_DECIMALS,
             spendingLimits: new AxonVault.SpendingLimit[](0),
@@ -2201,8 +2201,24 @@ contract AxonVaultTest is Test {
             requireAiVerification: false
         });
         vm.prank(principal);
+        vm.expectRevert(AxonVault.OwnerCannotBeBot.selector);
         vault.addBot(principal, params);
-        assertTrue(vault.isBotActive(principal));
+    }
+
+    /// @dev Owner cannot register as bot even if operator tries.
+    function test_addBot_reverts_owner_as_bot_by_operator() public {
+        AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](1);
+        limits[0] = AxonVault.SpendingLimit({ amount: 500 * USDC_DECIMALS, maxCount: 0, windowSeconds: 86400 });
+
+        AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
+            maxPerTxAmount: 500 * USDC_DECIMALS,
+            spendingLimits: limits,
+            aiTriggerThreshold: 100 * USDC_DECIMALS,
+            requireAiVerification: false
+        });
+        vm.prank(operator);
+        vm.expectRevert(AxonVault.OwnerCannotBeBot.selector);
+        vault.addBot(principal, params);
     }
 
     /// @dev Operator can be registered as a bot — no restriction in contract.
