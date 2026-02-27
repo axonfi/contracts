@@ -310,6 +310,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         }
 
         BotConfig storage config = _bots[bot];
+        delete config.spendingLimits; // clear stale data from previous registration
         config.isActive = true;
         config.registeredAt = block.timestamp;
         config.maxPerTxAmount = params.maxPerTxAmount;

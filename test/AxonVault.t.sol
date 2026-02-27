@@ -2151,4 +2151,271 @@ contract AxonVaultTest is Test {
         vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
         vault.executeSwap(intent, sig, address(usdc), 100 * USDC_DECIMALS, address(swapRouter), "");
     }
+
+    // =========================================================================
+    // Bot re-registration (stale spending limits)
+    // =========================================================================
+
+    function test_reregister_bot_clears_stale_spending_limits() public {
+        // bot was added in setUp with 1 spending limit (10k/day)
+        AxonVault.BotConfig memory configBefore = vault.getBotConfig(bot);
+        assertEq(configBefore.spendingLimits.length, 1);
+
+        // Remove bot
+        vm.prank(principal);
+        vault.removeBot(bot);
+
+        // Re-register with a different limit
+        AxonVault.SpendingLimit[] memory newLimits = new AxonVault.SpendingLimit[](1);
+        newLimits[0] = AxonVault.SpendingLimit({ amount: 5_000 * USDC_DECIMALS, maxCount: 10, windowSeconds: 3600 });
+
+        AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
+            maxPerTxAmount: 1_000 * USDC_DECIMALS,
+            spendingLimits: newLimits,
+            aiTriggerThreshold: 500 * USDC_DECIMALS,
+            requireAiVerification: false
+        });
+        vm.prank(principal);
+        vault.addBot(bot, params);
+
+        // Should have exactly 1 limit (the new one), NOT 2
+        AxonVault.BotConfig memory configAfter = vault.getBotConfig(bot);
+        assertEq(configAfter.spendingLimits.length, 1);
+
+        // Verify it's the new limit, not the old one
+        assertEq(configAfter.spendingLimits[0].amount, 5_000 * USDC_DECIMALS);
+        assertEq(configAfter.spendingLimits[0].maxCount, 10);
+        assertEq(configAfter.spendingLimits[0].windowSeconds, 3600);
+    }
+
+    // =========================================================================
+    // Edge cases — role overlap & identity
+    // =========================================================================
+
+    /// @dev Owner can register themselves as a bot — no restriction in contract.
+    function test_owner_can_register_as_bot() public {
+        AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
+            maxPerTxAmount: 1_000 * USDC_DECIMALS,
+            spendingLimits: new AxonVault.SpendingLimit[](0),
+            aiTriggerThreshold: 0,
+            requireAiVerification: false
+        });
+        vm.prank(principal);
+        vault.addBot(principal, params);
+        assertTrue(vault.isBotActive(principal));
+    }
+
+    /// @dev Operator can be registered as a bot — no restriction in contract.
+    function test_operator_can_be_registered_as_bot() public {
+        AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
+            maxPerTxAmount: 1_000 * USDC_DECIMALS,
+            spendingLimits: new AxonVault.SpendingLimit[](0),
+            aiTriggerThreshold: 0,
+            requireAiVerification: false
+        });
+        vm.prank(principal);
+        vault.addBot(operator, params);
+        assertTrue(vault.isBotActive(operator));
+    }
+
+    /// @dev Registering an already-active bot reverts with BotAlreadyExists.
+    function test_addBot_reverts_duplicate_registration() public {
+        // bot is already registered in setUp
+        assertTrue(vault.isBotActive(bot));
+
+        AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
+            maxPerTxAmount: 500 * USDC_DECIMALS,
+            spendingLimits: new AxonVault.SpendingLimit[](0),
+            aiTriggerThreshold: 0,
+            requireAiVerification: false
+        });
+        vm.prank(principal);
+        vm.expectRevert(AxonVault.BotAlreadyExists.selector);
+        vault.addBot(bot, params);
+    }
+
+    /// @dev Cannot set owner address as operator.
+    function test_setOperator_reverts_owner_address() public {
+        vm.prank(principal);
+        vm.expectRevert(AxonVault.OperatorCannotBeOwner.selector);
+        vault.setOperator(principal);
+    }
+
+    /// @dev Setting operator to zero address is valid (unsets operator).
+    function test_setOperator_zero_address_unsets() public {
+        vm.prank(principal);
+        vault.setOperator(address(0));
+        assertEq(vault.operator(), address(0));
+    }
+
+    /// @dev Cannot register zero address as a bot.
+    function test_addBot_reverts_zero_address_bot() public {
+        AxonVault.BotConfigParams memory params;
+        vm.prank(principal);
+        vm.expectRevert(AxonVault.ZeroAddress.selector);
+        vault.addBot(address(0), params);
+    }
+
+    /// @dev Same bot address can be registered on different vaults (independent storage).
+    function test_same_bot_on_different_vaults() public {
+        // Deploy a second vault for the same principal
+        AxonVault vault2 = new AxonVault(principal, address(registry), true);
+
+        AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
+            maxPerTxAmount: 500 * USDC_DECIMALS,
+            spendingLimits: new AxonVault.SpendingLimit[](0),
+            aiTriggerThreshold: 0,
+            requireAiVerification: false
+        });
+
+        // bot is already on vault (setUp). Add to vault2.
+        vm.prank(principal);
+        vault2.addBot(bot, params);
+
+        // Both vaults have the same bot independently
+        assertTrue(vault.isBotActive(bot));
+        assertTrue(vault2.isBotActive(bot));
+
+        // Removing from one doesn't affect the other
+        vm.prank(principal);
+        vault2.removeBot(bot);
+        assertTrue(vault.isBotActive(bot));
+        assertFalse(vault2.isBotActive(bot));
+    }
+
+    // =========================================================================
+    // Access control — who can call what
+    // =========================================================================
+
+    /// @dev Attacker cannot remove a bot.
+    function test_removeBot_reverts_non_authorized() public {
+        vm.prank(attacker);
+        vm.expectRevert(AxonVault.NotAuthorized.selector);
+        vault.removeBot(bot);
+    }
+
+    /// @dev Attacker cannot update bot config.
+    function test_updateBotConfig_reverts_non_authorized() public {
+        AxonVault.BotConfigParams memory params;
+        vm.prank(attacker);
+        vm.expectRevert(AxonVault.NotAuthorized.selector);
+        vault.updateBotConfig(bot, params);
+    }
+
+    /// @dev Attacker cannot add to global destination whitelist.
+    function test_addGlobalDestination_reverts_non_owner() public {
+        vm.prank(attacker);
+        vm.expectRevert();
+        vault.addGlobalDestination(recipient);
+    }
+
+    /// @dev Operator cannot add to global destination whitelist (owner-only, loosening).
+    function test_addGlobalDestination_reverts_operator() public {
+        vm.prank(operator);
+        vm.expectRevert();
+        vault.addGlobalDestination(recipient);
+    }
+
+    /// @dev Attacker cannot remove from global destination whitelist.
+    function test_removeGlobalDestination_reverts_non_authorized() public {
+        vm.prank(principal);
+        vault.addGlobalDestination(recipient);
+
+        vm.prank(attacker);
+        vm.expectRevert(AxonVault.NotAuthorized.selector);
+        vault.removeGlobalDestination(recipient);
+    }
+
+    /// @dev Attacker cannot add to bot destination whitelist.
+    function test_addBotDestination_reverts_non_owner() public {
+        vm.prank(attacker);
+        vm.expectRevert();
+        vault.addBotDestination(bot, recipient);
+    }
+
+    /// @dev Operator cannot add to bot destination whitelist (owner-only, loosening).
+    function test_addBotDestination_reverts_operator() public {
+        vm.prank(operator);
+        vm.expectRevert();
+        vault.addBotDestination(bot, recipient);
+    }
+
+    /// @dev Attacker cannot remove from bot destination whitelist.
+    function test_removeBotDestination_reverts_non_authorized() public {
+        vm.prank(principal);
+        vault.addBotDestination(bot, recipient);
+
+        vm.prank(attacker);
+        vm.expectRevert(AxonVault.NotAuthorized.selector);
+        vault.removeBotDestination(bot, recipient);
+    }
+
+    /// @dev Attacker cannot add to global blacklist.
+    function test_addGlobalBlacklist_reverts_non_authorized() public {
+        vm.prank(attacker);
+        vm.expectRevert(AxonVault.NotAuthorized.selector);
+        vault.addGlobalBlacklist(recipient);
+    }
+
+    /// @dev Attacker cannot remove from global blacklist (owner-only).
+    function test_removeGlobalBlacklist_reverts_non_owner() public {
+        vm.prank(principal);
+        vault.addGlobalBlacklist(recipient);
+
+        vm.prank(attacker);
+        vm.expectRevert();
+        vault.removeGlobalBlacklist(recipient);
+    }
+
+    /// @dev Operator cannot remove from global blacklist (owner-only, loosening).
+    function test_removeGlobalBlacklist_reverts_operator() public {
+        vm.prank(principal);
+        vault.addGlobalBlacklist(recipient);
+
+        vm.prank(operator);
+        vm.expectRevert();
+        vault.removeGlobalBlacklist(recipient);
+    }
+
+    /// @dev Attacker cannot unpause.
+    function test_unpause_reverts_non_owner() public {
+        vm.prank(principal);
+        vault.pause();
+
+        vm.prank(attacker);
+        vm.expectRevert();
+        vault.unpause();
+    }
+
+    /// @dev Operator cannot unpause (owner-only).
+    function test_unpause_reverts_operator() public {
+        vm.prank(principal);
+        vault.pause();
+
+        vm.prank(operator);
+        vm.expectRevert();
+        vault.unpause();
+    }
+
+    /// @dev Operator cannot withdraw (owner-only).
+    function test_withdraw_reverts_operator() public {
+        vm.prank(operator);
+        vm.expectRevert();
+        vault.withdraw(address(usdc), 1_000 * USDC_DECIMALS, operator);
+    }
+
+    /// @dev Operator cannot set the operator (owner-only).
+    function test_setOperator_reverts_operator() public {
+        vm.prank(operator);
+        vm.expectRevert();
+        vault.setOperator(attacker);
+    }
+
+    /// @dev Operator cannot set operator ceilings (owner-only).
+    function test_setOperatorCeilings_reverts_operator() public {
+        AxonVault.OperatorCeilings memory c;
+        vm.prank(operator);
+        vm.expectRevert();
+        vault.setOperatorCeilings(c);
+    }
 }
