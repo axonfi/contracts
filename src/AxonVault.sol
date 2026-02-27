@@ -491,6 +491,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     ///         in the relayer's PostgreSQL. Pass bytes32(0) for plain deposits with no reference.
     ///         Direct transfers (no function call) also work but emit no vault event.
     function deposit(address token, uint256 amount, bytes32 ref) external payable nonReentrant {
+        if (amount == 0) revert ZeroAmount();
         if (token == NATIVE_ETH) {
             if (msg.value != amount) revert AmountMismatch();
         } else {
@@ -502,6 +503,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
 
     /// @notice Withdraw tokens or native ETH. Owner only — non-custodial guarantee.
     function withdraw(address token, uint256 amount, address to) external onlyOwner nonReentrant {
+        if (amount == 0) revert ZeroAmount();
         if (to == address(0)) revert ZeroAddress();
         _transferOut(token, to, amount);
         emit Withdrawn(token, amount, to);

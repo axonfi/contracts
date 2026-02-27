@@ -620,6 +620,19 @@ contract AxonVaultTest is Test {
         vm.stopPrank();
     }
 
+    function test_deposit_reverts_zero_amount() public {
+        vm.prank(principal);
+        vm.expectRevert(AxonVault.ZeroAmount.selector);
+        vault.deposit(address(usdc), 0, bytes32(0));
+    }
+
+    function test_deposit_eth_reverts_zero_amount() public {
+        address nativeEth = vault.NATIVE_ETH();
+        vm.prank(principal);
+        vm.expectRevert(AxonVault.ZeroAmount.selector);
+        vault.deposit{value: 0}(nativeEth, 0, bytes32(0));
+    }
+
     function test_withdraw_by_owner() public {
         vm.prank(principal);
         vault.withdraw(address(usdc), 1_000 * USDC_DECIMALS, principal);
@@ -636,6 +649,12 @@ contract AxonVaultTest is Test {
         vm.prank(principal);
         vm.expectRevert(AxonVault.ZeroAddress.selector);
         vault.withdraw(address(usdc), 1_000 * USDC_DECIMALS, address(0));
+    }
+
+    function test_withdraw_reverts_zero_amount() public {
+        vm.prank(principal);
+        vm.expectRevert(AxonVault.ZeroAmount.selector);
+        vault.withdraw(address(usdc), 0, principal);
     }
 
     function test_operator_cannot_withdraw() public {
