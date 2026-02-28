@@ -10,10 +10,13 @@
 
 | Contract                | Address                                      |
 | ----------------------- | -------------------------------------------- |
-| AxonRegistry            | `0x2ccd97040c1f4D97ac90e8bA8FEe9D0DCf4e3dc3` |
-| AxonVaultFactory (v1)   | `0x55D71180ed38EBc0E2959840589BF4506A05641a` |
-| AxonVaultFactory (v2)   | `0xCC75dC0F9617AAF4179EDD9F7d27B67aA4DC60E6` |
-| Test Vault (v2)         | `0xdC3b0a3246e63983fAC310D2c8aE4991Fe69cA08` |
+| AxonRegistry (v2+oracle)| `0x21340E5066d1C51FA58CDbCaE492407f2a109e64` |
+| AxonVaultFactory (v2)   | `0xDbd90785E57fd433ee4dAc65318C4083624649db` |
+| Test Vault (v2)         | `0x736fd8450a2ac4449684b71fc24724804b82aaef` |
+| Old Registry            | `0x2ccd97040c1f4D97ac90e8bA8FEe9D0DCf4e3dc3` |
+| Old Factory (v1)        | `0x55D71180ed38EBc0E2959840589BF4506A05641a` |
+| Old Factory (v2-pre)    | `0xCC75dC0F9617AAF4179EDD9F7d27B67aA4DC60E6` |
+| Old Vault (v2-pre)      | `0xdC3b0a3246e63983fAC310D2c8aE4991Fe69cA08` |
 | USDC                    | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | USDT                    | `0x323e78f944A9a1FcF3a10efcC5319DBb0bB6e673` |
 | WETH                    | `0x4200000000000000000000000000000000000006` |
