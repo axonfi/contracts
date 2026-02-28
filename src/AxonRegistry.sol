@@ -12,10 +12,16 @@ contract AxonRegistry is IAxonRegistry, Ownable2Step {
     mapping(address => bool) private _authorizedRelayers;
     mapping(address => bool) private _approvedSwapRouters;
 
+    // Oracle config — used by vaults for on-chain TWAP price lookups
+    address private _uniswapV3Factory;
+    address private _usdcAddress;
+    address private _wethAddress;
+
     event RelayerAdded(address indexed relayer);
     event RelayerRemoved(address indexed relayer);
     event SwapRouterAdded(address indexed router);
     event SwapRouterRemoved(address indexed router);
+    event OracleConfigUpdated(address uniswapV3Factory, address usdc, address weth);
 
     error ZeroAddress();
     error AlreadyAuthorized();
@@ -71,5 +77,34 @@ contract AxonRegistry is IAxonRegistry, Ownable2Step {
     /// @notice Returns true if the address is an approved swap router.
     function isApprovedSwapRouter(address router) external view override returns (bool) {
         return _approvedSwapRouters[router];
+    }
+
+    // =========================================================================
+    // Oracle config (TWAP price lookups)
+    // =========================================================================
+
+    /// @notice Set the oracle config for on-chain TWAP price lookups.
+    ///         Must be called after deployment for non-USDC maxPerTxAmount checks to work.
+    function setOracleConfig(address uniV3Factory, address usdc, address weth) external onlyOwner {
+        if (uniV3Factory == address(0) || usdc == address(0) || weth == address(0)) revert ZeroAddress();
+        _uniswapV3Factory = uniV3Factory;
+        _usdcAddress = usdc;
+        _wethAddress = weth;
+        emit OracleConfigUpdated(uniV3Factory, usdc, weth);
+    }
+
+    /// @notice Uniswap V3 factory for TWAP pool lookups.
+    function uniswapV3Factory() external view override returns (address) {
+        return _uniswapV3Factory;
+    }
+
+    /// @notice USDC address on this chain (base denomination for maxPerTxAmount).
+    function usdcAddress() external view override returns (address) {
+        return _usdcAddress;
+    }
+
+    /// @notice WETH address on this chain (used for multi-hop TWAP pricing).
+    function wethAddress() external view override returns (address) {
+        return _wethAddress;
     }
 }

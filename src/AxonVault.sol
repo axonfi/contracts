@@ -9,6 +9,7 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./interfaces/IAxonRegistry.sol";
+import "./libraries/TwapOracle.sol";
 
 /// @title AxonVault
 /// @notice Non-custodial treasury vault for autonomous AI agent fleets.
@@ -34,7 +35,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     // Constants
     // =========================================================================
 
-    uint16 public constant VERSION = 1;
+    uint16 public constant VERSION = 2;
     uint8 public constant MAX_SPENDING_LIMITS = 5;
     address public constant NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
@@ -63,7 +64,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     struct BotConfig {
         bool isActive;
         uint256 registeredAt;
-        uint256 maxPerTxAmount; // hard cap enforced ON-CHAIN in executePayment (0 = no cap)
+        uint256 maxPerTxAmount; // USD hard cap via TWAP oracle, USDC units (6 decimals). 0 = no cap.
         SpendingLimit[] spendingLimits; // rolling window limits — stored on-chain, enforced by relayer
         uint256 aiTriggerThreshold; // relayer triggers AI scan above this amount (0 = never by amount)
         bool requireAiVerification; // relayer always requires AI scan for this bot
@@ -563,8 +564,8 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
             usedIntents[intentHash] = true;
         }
 
-        // Hard per-tx cap — enforced on-chain regardless of relayer behavior
-        if (bot.maxPerTxAmount > 0 && intent.amount > bot.maxPerTxAmount) revert MaxPerTxExceeded();
+        // Hard per-tx cap (USD-denominated via TWAP oracle)
+        _checkMaxPerTxAmount(bot, intent.token, intent.amount);
 
         // Destination whitelist — enforced on-chain
         _checkDestination(intent.bot, intent.to);
@@ -648,8 +649,8 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
             usedIntents[intentHash] = true;
         }
 
-        // Per-tx cap on swap output amount
-        if (bot.maxPerTxAmount > 0 && intent.minToAmount > bot.maxPerTxAmount) revert MaxPerTxExceeded();
+        // Per-tx cap on swap output amount (USD-denominated via TWAP oracle)
+        _checkMaxPerTxAmount(bot, intent.toToken, intent.minToAmount);
 
         // Snapshot vault balance of toToken before swap
         uint256 toBalanceBefore =
@@ -725,9 +726,9 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
             usedIntents[intentHash] = true;
         }
 
-        // Per-tx cap on approval amount (if applicable)
-        if (intent.amount > 0 && bot.maxPerTxAmount > 0 && intent.amount > bot.maxPerTxAmount) {
-            revert MaxPerTxExceeded();
+        // Per-tx cap on approval amount (USD-denominated via TWAP oracle)
+        if (intent.amount > 0) {
+            _checkMaxPerTxAmount(bot, intent.token, intent.amount);
         }
 
         // Pre-swap if vault doesn't have enough of the required token
@@ -793,6 +794,15 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     // =========================================================================
     // Internal helpers
     // =========================================================================
+
+    /// @dev Check maxPerTxAmount using TWAP oracle for USD conversion.
+    ///      maxPerTxAmount is stored in USDC terms (6 decimals). If oracle config is not
+    ///      set on the registry, reverts with OracleNotConfigured for non-USDC tokens.
+    function _checkMaxPerTxAmount(BotConfig storage bot, address token, uint256 amount) internal view {
+        if (bot.maxPerTxAmount == 0) return; // no cap
+        uint256 usdValue = TwapOracle.getUsdValue(axonRegistry, token, amount);
+        if (usdValue > bot.maxPerTxAmount) revert MaxPerTxExceeded();
+    }
 
     /// @dev Execute a swap via an approved DEX router. Caller must verify outcomes.
     function _doSwap(address fromToken, uint256 maxFromAmount, address swapRouter, bytes calldata swapCalldata)

@@ -66,6 +66,45 @@ contract Deploy is Script {
             registry.addSwapRouter(0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45);
         }
 
+        // ── Set oracle config for TWAP price lookups ────────────────────────────
+        // Required for USD-denominated maxPerTxAmount enforcement on non-USDC tokens.
+        if (block.chainid == 8453) {
+            // Base mainnet
+            registry.setOracleConfig(
+                0x33128a8fC17869897dcE68Ed026d694621f6FDfD, // Uniswap V3 Factory
+                0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913, // USDC
+                0x4200000000000000000000000000000000000006 // WETH
+            );
+        } else if (block.chainid == 84532) {
+            // Base Sepolia
+            registry.setOracleConfig(
+                0x33128a8fC17869897dcE68Ed026d694621f6FDfD, // Uniswap V3 Factory
+                0x036CbD53842c5426634e7929541eC2318f3dCF7e, // USDC
+                0x4200000000000000000000000000000000000006 // WETH
+            );
+        } else if (block.chainid == 42161) {
+            // Arbitrum One
+            registry.setOracleConfig(
+                0x1F98431c8aD98523631AE4a59f267346ea31F984, // Uniswap V3 Factory
+                0xaf88d065e77c8cC2239327C5EDb3A432268e5831, // USDC
+                0x82aF49447D8a07e3bd95BD0d56f35241523fBab1 // WETH
+            );
+        } else if (block.chainid == 10) {
+            // Optimism
+            registry.setOracleConfig(
+                0x1F98431c8aD98523631AE4a59f267346ea31F984, // Uniswap V3 Factory
+                0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85, // USDC
+                0x4200000000000000000000000000000000000006 // WETH
+            );
+        } else if (block.chainid == 137) {
+            // Polygon PoS
+            registry.setOracleConfig(
+                0x1F98431c8aD98523631AE4a59f267346ea31F984, // Uniswap V3 Factory
+                0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359, // USDC
+                0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270 // WMATIC (WETH equivalent)
+            );
+        }
+
         vm.stopBroadcast();
 
         // ── Post-deployment log ───────────────────────────────────────────────

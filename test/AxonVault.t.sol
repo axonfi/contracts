@@ -79,6 +79,12 @@ contract AxonVaultTest is Test {
         // Approve swap router on the global registry
         registry.addSwapRouter(address(swapRouter));
 
+        // Set oracle config — USDC address must match our mock so TWAP oracle
+        // returns USDC amounts directly (no pool lookup needed for USDC tokens)
+        address dummyWeth = makeAddr("weth");
+        address dummyV3Factory = makeAddr("uniV3Factory");
+        registry.setOracleConfig(dummyV3Factory, address(usdc), dummyWeth);
+
         // Deploy vault owned by principal
         vault = new AxonVault(principal, address(registry), true);
 
@@ -105,7 +111,7 @@ contract AxonVaultTest is Test {
         limits[0] = AxonVault.SpendingLimit({ amount: 10_000 * USDC_DECIMALS, maxCount: 0, windowSeconds: 86400 });
 
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
-            maxPerTxAmount: 2_000 * USDC_DECIMALS,
+            maxPerTxAmount: 0, // no per-tx cap by default; specific tests set their own
             spendingLimits: limits,
             aiTriggerThreshold: 1_000 * USDC_DECIMALS,
             requireAiVerification: false
@@ -158,8 +164,8 @@ contract AxonVaultTest is Test {
     // Deployment
     // =========================================================================
 
-    function test_version_is_1() public view {
-        assertEq(vault.VERSION(), 1);
+    function test_version_is_2() public view {
+        assertEq(vault.VERSION(), 2);
     }
 
     function test_axonRegistry_is_immutable() public view {
@@ -236,7 +242,7 @@ contract AxonVaultTest is Test {
 
     function test_addBot_stores_config_correctly() public view {
         AxonVault.BotConfig memory config = vault.getBotConfig(bot);
-        assertEq(config.maxPerTxAmount, 2_000 * USDC_DECIMALS);
+        assertEq(config.maxPerTxAmount, 0); // default: no per-tx cap
         assertEq(config.aiTriggerThreshold, 1_000 * USDC_DECIMALS);
         assertFalse(config.requireAiVerification);
         assertEq(config.spendingLimits.length, 1);
@@ -777,7 +783,19 @@ contract AxonVaultTest is Test {
     }
 
     function test_executePayment_reverts_maxPerTxAmount_exceeded() public {
-        // Bot's maxPerTxAmount is $2k; try to send $3k
+        // Set bot's maxPerTxAmount to $2k, then try to send $3k
+        AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](0);
+        vm.prank(principal);
+        vault.updateBotConfig(
+            bot,
+            AxonVault.BotConfigParams({
+                maxPerTxAmount: 2_000 * USDC_DECIMALS,
+                spendingLimits: limits,
+                aiTriggerThreshold: 0,
+                requireAiVerification: false
+            })
+        );
+
         AxonVault.PaymentIntent memory intent = _defaultIntent(3_000 * USDC_DECIMALS);
         bytes memory sig = _signPayment(BOT_KEY, intent);
 
@@ -1751,6 +1769,19 @@ contract AxonVaultTest is Test {
     }
 
     function test_executeProtocol_reverts_maxPerTx_exceeded() public {
+        // Set bot's maxPerTxAmount to $2k
+        AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](0);
+        vm.prank(principal);
+        vault.updateBotConfig(
+            bot,
+            AxonVault.BotConfigParams({
+                maxPerTxAmount: 2_000 * USDC_DECIMALS,
+                spendingLimits: limits,
+                aiTriggerThreshold: 0,
+                requireAiVerification: false
+            })
+        );
+
         uint256 tooMuch = 3_000 * USDC_DECIMALS;
         bytes memory callData = abi.encodeCall(MockProtocol.openTrade, (address(usdc), tooMuch, 0, true, 10));
 
@@ -2097,10 +2128,23 @@ contract AxonVaultTest is Test {
     }
 
     function test_executeSwap_reverts_maxPerTx_exceeded() public {
-        // Bot's maxPerTxAmount is $2k
+        // Set bot's maxPerTxAmount to $2k
+        AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](0);
+        vm.prank(principal);
+        vault.updateBotConfig(
+            bot,
+            AxonVault.BotConfigParams({
+                maxPerTxAmount: 2_000 * USDC_DECIMALS,
+                spendingLimits: limits,
+                aiTriggerThreshold: 0,
+                requireAiVerification: false
+            })
+        );
+
+        // Use USDC as toToken so oracle can price it (USDC → USDC = direct)
         AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
             bot: bot,
-            toToken: address(usdt),
+            toToken: address(usdc), // use USDC so oracle works in unit tests
             minToAmount: 3_000 * USDC_DECIMALS, // exceeds $2k cap
             deadline: _deadline(),
             ref: bytes32("ref")
@@ -2109,7 +2153,7 @@ contract AxonVaultTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(AxonVault.MaxPerTxExceeded.selector);
-        vault.executeSwap(intent, sig, address(usdc), 3_100 * USDC_DECIMALS, address(swapRouter), "");
+        vault.executeSwap(intent, sig, address(usdt), 3_100 * USDC_DECIMALS, address(swapRouter), "");
     }
 
     function test_executeSwap_reverts_insufficient_output() public {
