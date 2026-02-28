@@ -78,7 +78,7 @@ contract Deploy is Script {
         } else if (block.chainid == 84532) {
             // Base Sepolia
             registry.setOracleConfig(
-                0x33128a8fC17869897dcE68Ed026d694621f6FDfD, // Uniswap V3 Factory
+                0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24, // Uniswap V3 Factory (Base Sepolia)
                 0x036CbD53842c5426634e7929541eC2318f3dCF7e, // USDC
                 0x4200000000000000000000000000000000000006 // WETH
             );
