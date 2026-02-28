@@ -61,6 +61,29 @@ echo "Deployer   : $DEPLOYER"
 echo "Track      : $TRACK_INTENTS"
 echo ""
 
+# ── TOS pre-flight check ───────────────────────────────────────────────
+echo "Checking TOS acceptance for $DEPLOYER..."
+TOS_RESPONSE=$(curl -s "$RELAYER_URL/v1/tos/status?wallet=$DEPLOYER" 2>&1)
+TOS_ACCEPTED=$(echo "$TOS_RESPONSE" | jq -r '.accepted // "unknown"' 2>/dev/null)
+
+if [ "$TOS_ACCEPTED" = "false" ]; then
+  echo ""
+  echo "ERROR: TOS not accepted for wallet $DEPLOYER"
+  echo ""
+  echo "The vault owner must accept the Terms of Service before deploying."
+  echo "Accept via:"
+  echo "  1. Dashboard: connect your wallet at http://localhost:3001"
+  echo "  2. SDK:       client.acceptTos(signer, '$DEPLOYER')"
+  echo ""
+  echo "After accepting, re-run this script."
+  exit 1
+elif [ "$TOS_ACCEPTED" = "unknown" ]; then
+  echo "WARNING: Could not check TOS status (relayer may be offline). Proceeding anyway..."
+else
+  echo "TOS accepted."
+fi
+echo ""
+
 # ── Deploy ──────────────────────────────────────────────────────────────
 echo "Deploying vault..."
 TX_OUTPUT=$(cast send "$FACTORY" "deployVault(bool)" "$TRACK_INTENTS" \
