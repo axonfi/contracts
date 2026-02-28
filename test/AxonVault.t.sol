@@ -112,6 +112,7 @@ contract AxonVaultTest is Test {
 
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 0, // no per-tx cap by default; specific tests set their own
+            maxRebalanceAmount: 0,
             spendingLimits: limits,
             aiTriggerThreshold: 1_000 * USDC_DECIMALS,
             requireAiVerification: false
@@ -130,6 +131,11 @@ contract AxonVaultTest is Test {
 
     function _deadline() internal view returns (uint256) {
         return block.timestamp + DEADLINE_DELTA;
+    }
+
+    function _toArray(address a) internal pure returns (address[] memory arr) {
+        arr = new address[](1);
+        arr[0] = a;
     }
 
     function _signPayment(uint256 privKey, AxonVault.PaymentIntent memory intent) internal view returns (bytes memory) {
@@ -164,8 +170,8 @@ contract AxonVaultTest is Test {
     // Deployment
     // =========================================================================
 
-    function test_version_is_2() public view {
-        assertEq(vault.VERSION(), 2);
+    function test_version_is_4() public view {
+        assertEq(vault.VERSION(), 4);
     }
 
     function test_axonRegistry_is_immutable() public view {
@@ -273,6 +279,7 @@ contract AxonVaultTest is Test {
         AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](6); // MAX is 5
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 100 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
             spendingLimits: limits,
             aiTriggerThreshold: 0,
             requireAiVerification: false
@@ -308,6 +315,7 @@ contract AxonVaultTest is Test {
 
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 3_000 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
             spendingLimits: limits,
             aiTriggerThreshold: 500 * USDC_DECIMALS,
             requireAiVerification: true
@@ -344,6 +352,7 @@ contract AxonVaultTest is Test {
 
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 800 * USDC_DECIMALS, // below $1k ceiling
+            maxRebalanceAmount: 0,
             spendingLimits: limits, // $4k/day, below $5k ceiling
             aiTriggerThreshold: 300 * USDC_DECIMALS, // below $500 floor
             requireAiVerification: false
@@ -358,6 +367,7 @@ contract AxonVaultTest is Test {
     function test_operator_addBot_tracked_separately() public {
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 500 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
             spendingLimits: new AxonVault.SpendingLimit[](0),
             aiTriggerThreshold: 0,
             requireAiVerification: false
@@ -372,6 +382,7 @@ contract AxonVaultTest is Test {
     function test_operator_removeBot_decrements_count() public {
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 500 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
             spendingLimits: new AxonVault.SpendingLimit[](0),
             aiTriggerThreshold: 0,
             requireAiVerification: false
@@ -412,6 +423,7 @@ contract AxonVaultTest is Test {
 
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 500 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
             spendingLimits: new AxonVault.SpendingLimit[](0),
             aiTriggerThreshold: 0,
             requireAiVerification: false
@@ -429,6 +441,7 @@ contract AxonVaultTest is Test {
     function test_operator_addBot_reverts_maxPerTx_exceeds_ceiling() public {
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 2_000 * USDC_DECIMALS, // ceiling is $1k
+            maxRebalanceAmount: 0,
             spendingLimits: new AxonVault.SpendingLimit[](0),
             aiTriggerThreshold: 0,
             requireAiVerification: false
@@ -442,6 +455,7 @@ contract AxonVaultTest is Test {
         // maxPerTxAmount = 0 means "no cap" — operator cannot set this when ceiling is active
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 0, // "unlimited" — not allowed when ceiling is set
+            maxRebalanceAmount: 0,
             spendingLimits: new AxonVault.SpendingLimit[](0),
             aiTriggerThreshold: 0,
             requireAiVerification: false
@@ -457,6 +471,7 @@ contract AxonVaultTest is Test {
 
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 500 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
             spendingLimits: limits,
             aiTriggerThreshold: 0,
             requireAiVerification: false
@@ -469,6 +484,7 @@ contract AxonVaultTest is Test {
     function test_operator_addBot_reverts_ai_threshold_above_floor() public {
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 500 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
             spendingLimits: new AxonVault.SpendingLimit[](0),
             aiTriggerThreshold: 1_000 * USDC_DECIMALS, // above $500 floor
             requireAiVerification: false
@@ -482,6 +498,7 @@ contract AxonVaultTest is Test {
         // First set requireAiVerification = true via owner
         AxonVault.BotConfigParams memory enableParams = AxonVault.BotConfigParams({
             maxPerTxAmount: 2_000 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
             spendingLimits: new AxonVault.SpendingLimit[](0),
             aiTriggerThreshold: 500 * USDC_DECIMALS,
             requireAiVerification: true
@@ -492,6 +509,7 @@ contract AxonVaultTest is Test {
         // Now operator tries to disable it
         AxonVault.BotConfigParams memory disableParams = AxonVault.BotConfigParams({
             maxPerTxAmount: 500 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
             spendingLimits: new AxonVault.SpendingLimit[](0),
             aiTriggerThreshold: 500 * USDC_DECIMALS,
             requireAiVerification: false // trying to disable
@@ -505,6 +523,7 @@ contract AxonVaultTest is Test {
         // Owner is not bound by operator ceilings
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 50_000 * USDC_DECIMALS, // far above operator ceiling of $1k
+            maxRebalanceAmount: 0,
             spendingLimits: new AxonVault.SpendingLimit[](0),
             aiTriggerThreshold: 0,
             requireAiVerification: false
@@ -790,6 +809,7 @@ contract AxonVaultTest is Test {
             bot,
             AxonVault.BotConfigParams({
                 maxPerTxAmount: 2_000 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
                 spendingLimits: limits,
                 aiTriggerThreshold: 0,
                 requireAiVerification: false
@@ -824,6 +844,7 @@ contract AxonVaultTest is Test {
 
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 0,
+            maxRebalanceAmount: 0,
             spendingLimits: new AxonVault.SpendingLimit[](0),
             aiTriggerThreshold: 0,
             requireAiVerification: false
@@ -1081,6 +1102,7 @@ contract AxonVaultTest is Test {
 
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 1_000 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
             spendingLimits: limits,
             aiTriggerThreshold: 500 * USDC_DECIMALS,
             requireAiVerification: false
@@ -1109,6 +1131,7 @@ contract AxonVaultTest is Test {
 
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 2_000 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
             spendingLimits: limits,
             aiTriggerThreshold: 1_000 * USDC_DECIMALS,
             requireAiVerification: false
@@ -1292,6 +1315,7 @@ contract AxonVaultTest is Test {
         AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](0);
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 0, // no cap
+            maxRebalanceAmount: 0,
             spendingLimits: limits,
             aiTriggerThreshold: 0,
             requireAiVerification: false
@@ -1776,6 +1800,7 @@ contract AxonVaultTest is Test {
             bot,
             AxonVault.BotConfigParams({
                 maxPerTxAmount: 2_000 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
                 spendingLimits: limits,
                 aiTriggerThreshold: 0,
                 requireAiVerification: false
@@ -1844,7 +1869,7 @@ contract AxonVaultTest is Test {
     function test_executeProtocol_maxPerTx_zero_means_no_cap() public {
         AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](0);
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
-            maxPerTxAmount: 0, spendingLimits: limits, aiTriggerThreshold: 0, requireAiVerification: false
+            maxPerTxAmount: 0, maxRebalanceAmount: 0, spendingLimits: limits, aiTriggerThreshold: 0, requireAiVerification: false
         });
         vm.prank(principal);
         vault.addBot(bot2, params);
@@ -2127,33 +2152,35 @@ contract AxonVaultTest is Test {
         vault.executeSwap(intent, sig, address(usdc), 100 * USDC_DECIMALS, address(swapRouter), swapCalldata);
     }
 
-    function test_executeSwap_reverts_maxPerTx_exceeded() public {
-        // Set bot's maxPerTxAmount to $2k
+    function test_executeSwap_reverts_maxRebalanceAmount_exceeded() public {
+        // Set bot's maxRebalanceAmount to $2k (separate from payment maxPerTxAmount)
         AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](0);
         vm.prank(principal);
         vault.updateBotConfig(
             bot,
             AxonVault.BotConfigParams({
-                maxPerTxAmount: 2_000 * USDC_DECIMALS,
+                maxPerTxAmount: 0,
+                maxRebalanceAmount: 2_000 * USDC_DECIMALS,
                 spendingLimits: limits,
                 aiTriggerThreshold: 0,
                 requireAiVerification: false
             })
         );
 
-        // Use USDC as toToken so oracle can price it (USDC → USDC = direct)
+        // Check is on INPUT (fromToken/maxFromAmount), not the gameable output
         AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
             bot: bot,
-            toToken: address(usdc), // use USDC so oracle works in unit tests
-            minToAmount: 3_000 * USDC_DECIMALS, // exceeds $2k cap
+            toToken: address(usdt),
+            minToAmount: 100 * USDC_DECIMALS,
             deadline: _deadline(),
             ref: bytes32("ref")
         });
         bytes memory sig = _signSwap(BOT_KEY, intent);
 
+        // fromToken=USDC, maxFromAmount=$3100 exceeds $2k maxRebalanceAmount
         vm.prank(relayer);
-        vm.expectRevert(AxonVault.MaxPerTxExceeded.selector);
-        vault.executeSwap(intent, sig, address(usdt), 3_100 * USDC_DECIMALS, address(swapRouter), "");
+        vm.expectRevert(AxonVault.MaxRebalanceAmountExceeded.selector);
+        vault.executeSwap(intent, sig, address(usdc), 3_100 * USDC_DECIMALS, address(swapRouter), "");
     }
 
     function test_executeSwap_reverts_insufficient_output() public {
@@ -2197,6 +2224,263 @@ contract AxonVaultTest is Test {
     }
 
     // =========================================================================
+    // Rebalance token whitelist + maxRebalanceAmount
+    // =========================================================================
+
+    function test_executeSwap_rebalanceToken_whitelist_blocks_unlisted() public {
+        // Owner adds only USDC to the rebalance whitelist
+        vm.prank(principal);
+        vault.addRebalanceTokens(_toArray(address(usdc)));
+        assertEq(vault.rebalanceTokenCount(), 1);
+
+        // Try to swap to USDT (not on whitelist) — should revert
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot,
+            toToken: address(usdt), // NOT on whitelist
+            minToAmount: 100 * USDC_DECIMALS,
+            deadline: _deadline(),
+            ref: bytes32("blocked-swap")
+        });
+        bytes memory sig = _signSwap(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.RebalanceTokenNotAllowed.selector);
+        vault.executeSwap(intent, sig, address(usdc), 110 * USDC_DECIMALS, address(swapRouter), "");
+    }
+
+    function test_executeSwap_rebalanceToken_whitelist_allows_listed() public {
+        // Owner adds USDT to the rebalance whitelist
+        vm.prank(principal);
+        vault.addRebalanceTokens(_toArray(address(usdt)));
+
+        uint256 minOutput = 490 * USDC_DECIMALS;
+        usdt.mint(address(swapRouter), minOutput);
+
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot,
+            toToken: address(usdt), // on whitelist
+            minToAmount: minOutput,
+            deadline: _deadline(),
+            ref: bytes32("allowed-swap")
+        });
+        bytes memory sig = _signSwap(BOT_KEY, intent);
+        bytes memory swapCalldata = abi.encodeCall(
+            MockSwapRouter.swap, (address(usdc), 500 * USDC_DECIMALS, address(usdt), minOutput, address(vault))
+        );
+
+        vm.prank(relayer);
+        vault.executeSwap(intent, sig, address(usdc), 500 * USDC_DECIMALS, address(swapRouter), swapCalldata);
+        assertEq(usdt.balanceOf(address(vault)), minOutput);
+    }
+
+    function test_executeSwap_rebalanceToken_empty_allows_any() public {
+        // No tokens on whitelist — any token should be allowed (permissive default)
+        assertEq(vault.rebalanceTokenCount(), 0);
+
+        uint256 minOutput = 490 * USDC_DECIMALS;
+        usdt.mint(address(swapRouter), minOutput);
+
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot,
+            toToken: address(usdt),
+            minToAmount: minOutput,
+            deadline: _deadline(),
+            ref: bytes32("any-allowed")
+        });
+        bytes memory sig = _signSwap(BOT_KEY, intent);
+        bytes memory swapCalldata = abi.encodeCall(
+            MockSwapRouter.swap, (address(usdc), 500 * USDC_DECIMALS, address(usdt), minOutput, address(vault))
+        );
+
+        vm.prank(relayer);
+        vault.executeSwap(intent, sig, address(usdc), 500 * USDC_DECIMALS, address(swapRouter), swapCalldata);
+        assertEq(usdt.balanceOf(address(vault)), minOutput);
+    }
+
+    function test_rebalanceToken_owner_can_add() public {
+        vm.prank(principal);
+        vault.addRebalanceTokens(_toArray(address(usdt)));
+        assertTrue(vault.rebalanceTokenWhitelist(address(usdt)));
+        assertEq(vault.rebalanceTokenCount(), 1);
+    }
+
+    function test_rebalanceToken_operator_can_remove() public {
+        vm.prank(principal);
+        vault.addRebalanceTokens(_toArray(address(usdt)));
+        assertEq(vault.rebalanceTokenCount(), 1);
+
+        vm.prank(operator);
+        vault.removeRebalanceTokens(_toArray(address(usdt)));
+        assertFalse(vault.rebalanceTokenWhitelist(address(usdt)));
+        assertEq(vault.rebalanceTokenCount(), 0);
+    }
+
+    function test_rebalanceToken_attacker_cannot_add() public {
+        vm.prank(attacker);
+        vm.expectRevert(); // OwnableUnauthorizedAccount
+        vault.addRebalanceTokens(_toArray(address(usdt)));
+    }
+
+    function test_rebalanceToken_operator_cannot_add() public {
+        vm.prank(operator);
+        vm.expectRevert(); // OwnableUnauthorizedAccount — only owner can add (loosening)
+        vault.addRebalanceTokens(_toArray(address(usdt)));
+    }
+
+    function test_rebalanceToken_add_zero_reverts() public {
+        vm.prank(principal);
+        vm.expectRevert(AxonVault.ZeroAddress.selector);
+        vault.addRebalanceTokens(_toArray(address(0)));
+    }
+
+    function test_rebalanceToken_add_idempotent() public {
+        vm.prank(principal);
+        vault.addRebalanceTokens(_toArray(address(usdt)));
+        vm.prank(principal);
+        vault.addRebalanceTokens(_toArray(address(usdt))); // no-op
+        assertEq(vault.rebalanceTokenCount(), 1); // count not double-incremented
+    }
+
+    function test_rebalanceToken_remove_idempotent() public {
+        // Remove a token that was never added — no-op
+        vm.prank(principal);
+        vault.removeRebalanceTokens(_toArray(address(usdt)));
+        assertEq(vault.rebalanceTokenCount(), 0);
+    }
+
+    function test_executeSwap_maxRebalanceAmount_zero_means_no_cap() public {
+        // maxRebalanceAmount = 0 means no cap on rebalancing
+        AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](0);
+        vm.prank(principal);
+        vault.updateBotConfig(
+            bot,
+            AxonVault.BotConfigParams({
+                maxPerTxAmount: 100 * USDC_DECIMALS, // tight payment cap
+                maxRebalanceAmount: 0, // no rebalance cap
+                spendingLimits: limits,
+                aiTriggerThreshold: 0,
+                requireAiVerification: false
+            })
+        );
+
+        // Large rebalance should succeed even though maxPerTxAmount is $100
+        uint256 minOutput = 9_000 * USDC_DECIMALS;
+        usdt.mint(address(swapRouter), minOutput);
+
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot,
+            toToken: address(usdt),
+            minToAmount: minOutput,
+            deadline: _deadline(),
+            ref: bytes32("large-rebalance")
+        });
+        bytes memory sig = _signSwap(BOT_KEY, intent);
+        bytes memory swapCalldata = abi.encodeCall(
+            MockSwapRouter.swap, (address(usdc), 10_000 * USDC_DECIMALS, address(usdt), minOutput, address(vault))
+        );
+
+        vm.prank(relayer);
+        vault.executeSwap(intent, sig, address(usdc), 10_000 * USDC_DECIMALS, address(swapRouter), swapCalldata);
+        assertEq(usdt.balanceOf(address(vault)), minOutput);
+    }
+
+    function test_executeSwap_maxRebalanceAmount_checks_input_not_output() public {
+        // maxRebalanceAmount = $2k — check is on INPUT (fromToken/maxFromAmount)
+        AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](0);
+        vm.prank(principal);
+        vault.updateBotConfig(
+            bot,
+            AxonVault.BotConfigParams({
+                maxPerTxAmount: 0,
+                maxRebalanceAmount: 2_000 * USDC_DECIMALS,
+                spendingLimits: limits,
+                aiTriggerThreshold: 0,
+                requireAiVerification: false
+            })
+        );
+
+        // Small output, but large input — should be blocked
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot,
+            toToken: address(usdt),
+            minToAmount: 100 * USDC_DECIMALS, // small output
+            deadline: _deadline(),
+            ref: bytes32("input-check")
+        });
+        bytes memory sig = _signSwap(BOT_KEY, intent);
+
+        // maxFromAmount = $3k USDC (exceeds $2k maxRebalanceAmount)
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.MaxRebalanceAmountExceeded.selector);
+        vault.executeSwap(intent, sig, address(usdc), 3_000 * USDC_DECIMALS, address(swapRouter), "");
+    }
+
+    function test_executePayment_swap_not_restricted_by_rebalance_whitelist() public {
+        // Set rebalance whitelist to USDC only
+        vm.prank(principal);
+        vault.addRebalanceTokens(_toArray(address(usdc)));
+        assertEq(vault.rebalanceTokenCount(), 1);
+
+        // Payment with swap routing to USDT (NOT on rebalance whitelist) — should SUCCEED
+        // because rebalance whitelist only applies to executeSwap, not executePayment
+        uint256 usdtOut = 495 * USDC_DECIMALS;
+        usdt.mint(address(swapRouter), usdtOut);
+
+        AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
+            bot: bot,
+            to: recipient,
+            token: address(usdt), // not on rebalance whitelist
+            amount: usdtOut,
+            deadline: _deadline(),
+            ref: bytes32("payment-swap")
+        });
+        bytes memory sig = _signPayment(BOT_KEY, intent);
+        bytes memory swapCalldata = abi.encodeCall(
+            MockSwapRouter.swap, (address(usdc), 500 * USDC_DECIMALS, address(usdt), usdtOut, recipient)
+        );
+
+        vm.prank(relayer);
+        vault.executePayment(intent, sig, address(usdc), 500 * USDC_DECIMALS, address(swapRouter), swapCalldata);
+        assertEq(usdt.balanceOf(recipient), usdtOut);
+    }
+
+    function test_executeSwap_maxPerTxAmount_independent_from_rebalance() public {
+        // maxPerTxAmount = $100 (for payments), maxRebalanceAmount = $10K (for rebalancing)
+        // A $5K rebalance should succeed even though maxPerTxAmount is $100
+        AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](0);
+        vm.prank(principal);
+        vault.updateBotConfig(
+            bot,
+            AxonVault.BotConfigParams({
+                maxPerTxAmount: 100 * USDC_DECIMALS,
+                maxRebalanceAmount: 10_000 * USDC_DECIMALS,
+                spendingLimits: limits,
+                aiTriggerThreshold: 0,
+                requireAiVerification: false
+            })
+        );
+
+        uint256 minOutput = 4_500 * USDC_DECIMALS;
+        usdt.mint(address(swapRouter), minOutput);
+
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot,
+            toToken: address(usdt),
+            minToAmount: minOutput,
+            deadline: _deadline(),
+            ref: bytes32("independent-cap")
+        });
+        bytes memory sig = _signSwap(BOT_KEY, intent);
+        bytes memory swapCalldata = abi.encodeCall(
+            MockSwapRouter.swap, (address(usdc), 5_000 * USDC_DECIMALS, address(usdt), minOutput, address(vault))
+        );
+
+        vm.prank(relayer);
+        vault.executeSwap(intent, sig, address(usdc), 5_000 * USDC_DECIMALS, address(swapRouter), swapCalldata);
+        assertEq(usdt.balanceOf(address(vault)), minOutput);
+    }
+
+    // =========================================================================
     // Bot re-registration (stale spending limits)
     // =========================================================================
 
@@ -2215,6 +2499,7 @@ contract AxonVaultTest is Test {
 
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 1_000 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
             spendingLimits: newLimits,
             aiTriggerThreshold: 500 * USDC_DECIMALS,
             requireAiVerification: false
@@ -2240,6 +2525,7 @@ contract AxonVaultTest is Test {
     function test_addBot_reverts_owner_as_bot() public {
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 1_000 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
             spendingLimits: new AxonVault.SpendingLimit[](0),
             aiTriggerThreshold: 0,
             requireAiVerification: false
@@ -2256,6 +2542,7 @@ contract AxonVaultTest is Test {
 
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 500 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
             spendingLimits: limits,
             aiTriggerThreshold: 100 * USDC_DECIMALS,
             requireAiVerification: false
@@ -2269,6 +2556,7 @@ contract AxonVaultTest is Test {
     function test_operator_can_be_registered_as_bot() public {
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 1_000 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
             spendingLimits: new AxonVault.SpendingLimit[](0),
             aiTriggerThreshold: 0,
             requireAiVerification: false
@@ -2285,6 +2573,7 @@ contract AxonVaultTest is Test {
 
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 500 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
             spendingLimits: new AxonVault.SpendingLimit[](0),
             aiTriggerThreshold: 0,
             requireAiVerification: false
@@ -2323,6 +2612,7 @@ contract AxonVaultTest is Test {
 
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 500 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
             spendingLimits: new AxonVault.SpendingLimit[](0),
             aiTriggerThreshold: 0,
             requireAiVerification: false

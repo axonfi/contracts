@@ -24,6 +24,7 @@ import "./libraries/TwapOracle.sol";
 ///         - Bots never hold ETH or submit transactions directly
 ///         - maxPerTxAmount is enforced on-chain (hard cap)
 ///         - Destination whitelist enforced on-chain
+///         - Rebalance token whitelist restricts executeSwap output tokens (prevents swaps to worthless tokens)
 ///         - All other limits (daily, velocity, AI thresholds) stored on-chain, enforced by relayer
 ///         - Operator hot wallet is bounded by owner-set OperatorCeilings — cannot drain vault
 ///         - Global pause available to owner (and operator for emergencies); only owner can unpause
@@ -35,7 +36,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     // Constants
     // =========================================================================
 
-    uint16 public constant VERSION = 2;
+    uint16 public constant VERSION = 4;
     uint8 public constant MAX_SPENDING_LIMITS = 5;
     address public constant NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
@@ -64,7 +65,8 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     struct BotConfig {
         bool isActive;
         uint256 registeredAt;
-        uint256 maxPerTxAmount; // USD hard cap via TWAP oracle, USDC units (6 decimals). 0 = no cap.
+        uint256 maxPerTxAmount; // USD hard cap for payments/protocol actions. USDC units (6 decimals). 0 = no cap.
+        uint256 maxRebalanceAmount; // USD hard cap for executeSwap input. 0 = no cap (permissive default).
         SpendingLimit[] spendingLimits; // rolling window limits — stored on-chain, enforced by relayer
         uint256 aiTriggerThreshold; // relayer triggers AI scan above this amount (0 = never by amount)
         bool requireAiVerification; // relayer always requires AI scan for this bot
@@ -73,6 +75,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     /// @notice Parameters for adding or updating a bot. Mirrors BotConfig minus isActive/registeredAt.
     struct BotConfigParams {
         uint256 maxPerTxAmount;
+        uint256 maxRebalanceAmount;
         SpendingLimit[] spendingLimits;
         uint256 aiTriggerThreshold;
         bool requireAiVerification;
@@ -166,6 +169,12 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     mapping(address => bool) public approvedProtocols;
     uint256 public approvedProtocolCount;
 
+    // Rebalance token whitelist — restricts executeSwap output tokens.
+    // Only affects standalone swaps (executeSwap), NOT swap-within-payment (executePayment).
+    // Empty = any token allowed (permissive default for backwards compatibility).
+    mapping(address => bool) public rebalanceTokenWhitelist;
+    uint256 public rebalanceTokenCount;
+
     // =========================================================================
     // Events
     // =========================================================================
@@ -206,6 +215,9 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         address indexed bot, address fromToken, address toToken, uint256 fromAmount, uint256 toAmount, bytes32 ref
     );
 
+    event RebalanceTokenAdded(address indexed token);
+    event RebalanceTokenRemoved(address indexed token);
+
     // =========================================================================
     // Errors
     // =========================================================================
@@ -242,6 +254,8 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     error AlreadyApprovedProtocol();
     error ProtocolNotInList();
     error InsufficientBalance();
+    error RebalanceTokenNotAllowed();
+    error MaxRebalanceAmountExceeded();
 
     // =========================================================================
     // Modifiers
@@ -317,6 +331,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         config.isActive = true;
         config.registeredAt = block.timestamp;
         config.maxPerTxAmount = params.maxPerTxAmount;
+        config.maxRebalanceAmount = params.maxRebalanceAmount;
         config.aiTriggerThreshold = params.aiTriggerThreshold;
         config.requireAiVerification = params.requireAiVerification;
 
@@ -362,6 +377,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
 
         BotConfig storage config = _bots[bot];
         config.maxPerTxAmount = params.maxPerTxAmount;
+        config.maxRebalanceAmount = params.maxRebalanceAmount;
         config.aiTriggerThreshold = params.aiTriggerThreshold;
         config.requireAiVerification = params.requireAiVerification;
 
@@ -466,6 +482,35 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     /// @notice Check if a protocol is approved for this vault.
     function isProtocolApproved(address protocol) external view returns (bool) {
         return approvedProtocols[protocol];
+    }
+
+    // =========================================================================
+    // Rebalance token whitelist (executeSwap only)
+    // =========================================================================
+
+    /// @notice Allow a token as output for executeSwap (in-vault rebalancing). Owner only.
+    ///         Only affects standalone swaps — payment swap routing can use any token.
+    ///         Empty whitelist = any token allowed (permissive default).
+    function addRebalanceTokens(address[] calldata tokens) external onlyOwner {
+        for (uint256 i = 0; i < tokens.length; i++) {
+            if (tokens[i] == address(0)) revert ZeroAddress();
+            if (!rebalanceTokenWhitelist[tokens[i]]) {
+                rebalanceTokenWhitelist[tokens[i]] = true;
+                rebalanceTokenCount++;
+                emit RebalanceTokenAdded(tokens[i]);
+            }
+        }
+    }
+
+    /// @notice Remove tokens from the rebalance whitelist. Owner or operator (tightening).
+    function removeRebalanceTokens(address[] calldata tokens) external onlyOwnerOrOperator {
+        for (uint256 i = 0; i < tokens.length; i++) {
+            if (rebalanceTokenWhitelist[tokens[i]]) {
+                rebalanceTokenWhitelist[tokens[i]] = false;
+                rebalanceTokenCount--;
+                emit RebalanceTokenRemoved(tokens[i]);
+            }
+        }
     }
 
     // =========================================================================
@@ -613,6 +658,8 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     /// @notice Execute a standalone in-vault token swap. Output stays in the vault (not sent to a recipient).
     ///         Used for treasury rebalancing — e.g. swap USDC → WBTC before opening a GMX trade.
     ///         Bot signs a SwapIntent with minToAmount for slippage protection; contract verifies output on-chain.
+    ///         If rebalance token whitelist is non-empty, toToken must be on the list (prevents swaps to worthless tokens).
+    ///         maxPerTxAmount checks the INPUT (value at risk), not the gameable output amount.
     ///
     /// @param intent       SwapIntent signed by the bot. `toToken` = desired output, `minToAmount` = slippage floor.
     /// @param signature    Bot's EIP-712 signature over the SwapIntent.
@@ -649,8 +696,11 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
             usedIntents[intentHash] = true;
         }
 
-        // Per-tx cap on swap output amount (USD-denominated via TWAP oracle)
-        _checkMaxPerTxAmount(bot, intent.toToken, intent.minToAmount);
+        // Rebalance token whitelist — only restricts standalone swaps, not payment routing
+        _checkRebalanceToken(intent.toToken);
+
+        // Separate swap cap on INPUT amount (value at risk), not gameable output
+        _checkMaxRebalanceAmount(bot, fromToken, maxFromAmount);
 
         // Snapshot vault balance of toToken before swap
         uint256 toBalanceBefore =
@@ -804,6 +854,14 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         if (usdValue > bot.maxPerTxAmount) revert MaxPerTxExceeded();
     }
 
+    /// @dev Check maxRebalanceAmount (separate cap for executeSwap input). Same oracle logic.
+    ///      0 = no cap (permissive default — rebalance whitelist is the primary defense).
+    function _checkMaxRebalanceAmount(BotConfig storage bot, address token, uint256 amount) internal view {
+        if (bot.maxRebalanceAmount == 0) return; // no cap
+        uint256 usdValue = TwapOracle.getUsdValue(axonRegistry, token, amount);
+        if (usdValue > bot.maxRebalanceAmount) revert MaxRebalanceAmountExceeded();
+    }
+
     /// @dev Execute a swap via an approved DEX router. Caller must verify outcomes.
     function _doSwap(address fromToken, uint256 maxFromAmount, address swapRouter, bytes calldata swapCalldata)
         internal
@@ -839,6 +897,14 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
             if (!globalDestinationWhitelist[to] && !botDestinationWhitelist[bot][to]) {
                 revert DestinationNotWhitelisted();
             }
+        }
+    }
+
+    /// @dev Check rebalance token whitelist. Empty list = any token allowed.
+    ///      Only called for executeSwap, never for executePayment.
+    function _checkRebalanceToken(address token) internal view {
+        if (rebalanceTokenCount > 0 && !rebalanceTokenWhitelist[token]) {
+            revert RebalanceTokenNotAllowed();
         }
     }
 
