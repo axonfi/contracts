@@ -809,7 +809,7 @@ contract AxonVaultTest is Test {
             bot,
             AxonVault.BotConfigParams({
                 maxPerTxAmount: 2_000 * USDC_DECIMALS,
-            maxRebalanceAmount: 0,
+                maxRebalanceAmount: 0,
                 spendingLimits: limits,
                 aiTriggerThreshold: 0,
                 requireAiVerification: false
@@ -1800,7 +1800,7 @@ contract AxonVaultTest is Test {
             bot,
             AxonVault.BotConfigParams({
                 maxPerTxAmount: 2_000 * USDC_DECIMALS,
-            maxRebalanceAmount: 0,
+                maxRebalanceAmount: 0,
                 spendingLimits: limits,
                 aiTriggerThreshold: 0,
                 requireAiVerification: false
@@ -1869,7 +1869,11 @@ contract AxonVaultTest is Test {
     function test_executeProtocol_maxPerTx_zero_means_no_cap() public {
         AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](0);
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
-            maxPerTxAmount: 0, maxRebalanceAmount: 0, spendingLimits: limits, aiTriggerThreshold: 0, requireAiVerification: false
+            maxPerTxAmount: 0,
+            maxRebalanceAmount: 0,
+            spendingLimits: limits,
+            aiTriggerThreshold: 0,
+            requireAiVerification: false
         });
         vm.prank(principal);
         vault.addBot(bot2, params);
@@ -2281,11 +2285,7 @@ contract AxonVaultTest is Test {
         usdt.mint(address(swapRouter), minOutput);
 
         AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
-            bot: bot,
-            toToken: address(usdt),
-            minToAmount: minOutput,
-            deadline: _deadline(),
-            ref: bytes32("any-allowed")
+            bot: bot, toToken: address(usdt), minToAmount: minOutput, deadline: _deadline(), ref: bytes32("any-allowed")
         });
         bytes memory sig = _signSwap(BOT_KEY, intent);
         bytes memory swapCalldata = abi.encodeCall(
