@@ -72,7 +72,7 @@ if [ "$TOS_ACCEPTED" = "false" ]; then
   echo ""
   echo "The vault owner must accept the Terms of Service before deploying."
   echo "Accept via:"
-  echo "  1. Dashboard: connect your wallet at http://localhost:3001"
+  echo "  1. Dashboard: connect your wallet at https://app.axonfi.xyz"
   echo "  2. SDK:       client.acceptTos(signer, '$DEPLOYER')"
   echo ""
   echo "After accepting, re-run this script."
@@ -131,4 +131,4 @@ fi
 
 echo ""
 echo "=== Done ==="
-echo "Dashboard   : http://localhost:3001/vaults/$VAULT_ADDRESS"
+echo "Dashboard   : https://app.axonfi.xyz/vaults/$VAULT_ADDRESS"
