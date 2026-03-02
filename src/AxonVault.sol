@@ -14,9 +14,9 @@ import "./libraries/TwapOracle.sol";
 /// @title AxonVault
 /// @notice Non-custodial treasury vault for autonomous AI agent fleets.
 ///
-///         Principals deploy one vault per chain via AxonVaultFactory. Bots sign
+///         Owners deploy one vault per chain via AxonVaultFactory. Bots sign
 ///         EIP-712 payment intents; the Axon relayer validates and executes them.
-///         All policy values are stored on-chain for Principal verifiability — the
+///         All policy values are stored on-chain for Owner verifiability — the
 ///         relayer reads limits from the contract, not its own database.
 ///
 ///         Security model:
@@ -277,7 +277,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     // Constructor
     // =========================================================================
 
-    /// @param _owner           The Principal — vault owner, cold wallet recommended.
+    /// @param _owner           The Owner — vault owner, cold wallet recommended.
     /// @param _axonRegistry    Axon's AxonRegistry for this chain. Immutable.
     /// @param _trackUsedIntents If true, intent hashes are tracked to prevent duplicates.
     constructor(address _owner, address _axonRegistry, bool _trackUsedIntents)
@@ -829,7 +829,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     }
 
     /// @notice Computes the maximum daily amount an operator-compromised wallet could drain.
-    ///         Used by the dashboard to display the operator exposure warning to the Principal.
+    ///         Used by the dashboard to display the operator exposure warning to the Owner.
     ///         Formula: min(maxOperatorBots × maxBotDailyLimit, vaultDailyAggregate)
     function operatorMaxDrainPerDay() external view returns (uint256) {
         OperatorCeilings memory c = operatorCeilings;

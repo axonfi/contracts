@@ -13,12 +13,12 @@ contract AxonVaultTest is Test {
     // Actors
     // =========================================================================
 
-    uint256 constant PRINCIPAL_KEY = 0xA11CE;
+    uint256 constant VAULT_OWNER_KEY = 0xA11CE;
     uint256 constant OPERATOR_KEY = 0x0EA7;
     uint256 constant BOT_KEY = 0xB07;
     uint256 constant BOT2_KEY = 0xB072;
 
-    address principal;
+    address vaultOwner;
     address operator;
     address bot;
     address bot2;
@@ -59,7 +59,7 @@ contract AxonVaultTest is Test {
     // =========================================================================
 
     function setUp() public {
-        principal = vm.addr(PRINCIPAL_KEY);
+        vaultOwner = vm.addr(VAULT_OWNER_KEY);
         operator = vm.addr(OPERATOR_KEY);
         bot = vm.addr(BOT_KEY);
         bot2 = vm.addr(BOT2_KEY);
@@ -85,13 +85,13 @@ contract AxonVaultTest is Test {
         address dummyV3Factory = makeAddr("uniV3Factory");
         registry.setOracleConfig(dummyV3Factory, address(usdc), dummyWeth);
 
-        // Deploy vault owned by principal
-        vault = new AxonVault(principal, address(registry), true);
+        // Deploy vault owned by vaultOwner
+        vault = new AxonVault(vaultOwner, address(registry), true);
 
         // Fund vault
         usdc.mint(address(vault), VAULT_DEPOSIT);
 
-        // Default operator ceilings (set by principal)
+        // Default operator ceilings (set by vaultOwner)
         AxonVault.OperatorCeilings memory ceilings = AxonVault.OperatorCeilings({
             maxPerTxAmount: 1_000 * USDC_DECIMALS, // $1k per tx ceiling
             maxBotDailyLimit: 5_000 * USDC_DECIMALS, // $5k/day ceiling
@@ -99,14 +99,14 @@ contract AxonVaultTest is Test {
             vaultDailyAggregate: 10_000 * USDC_DECIMALS, // $10k/day total cap
             minAiTriggerFloor: 500 * USDC_DECIMALS // AI threshold can't exceed $500
         });
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.setOperatorCeilings(ceilings);
 
         // Set operator
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.setOperator(operator);
 
-        // Add a default bot (by principal, unconstrained by operator ceilings)
+        // Add a default bot (by vaultOwner, unconstrained by operator ceilings)
         AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](1);
         limits[0] = AxonVault.SpendingLimit({ amount: 10_000 * USDC_DECIMALS, maxCount: 0, windowSeconds: 86400 });
 
@@ -117,11 +117,11 @@ contract AxonVaultTest is Test {
             aiTriggerThreshold: 1_000 * USDC_DECIMALS,
             requireAiVerification: false
         });
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addBot(bot, params);
 
         // Approve mock protocol for executeProtocol tests
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addProtocol(address(mockProtocol));
     }
 
@@ -182,18 +182,18 @@ contract AxonVaultTest is Test {
         assertTrue(vault.trackUsedIntents());
     }
 
-    function test_owner_is_principal() public view {
-        assertEq(vault.owner(), principal);
+    function test_owner_is_vaultOwner() public view {
+        assertEq(vault.owner(), vaultOwner);
     }
 
     function test_deploy_without_intent_tracking() public {
-        AxonVault noTrack = new AxonVault(principal, address(registry), false);
+        AxonVault noTrack = new AxonVault(vaultOwner, address(registry), false);
         assertFalse(noTrack.trackUsedIntents());
     }
 
     function test_deploy_reverts_zero_registry() public {
         vm.expectRevert(AxonVault.ZeroAddress.selector);
-        new AxonVault(principal, address(0), true);
+        new AxonVault(vaultOwner, address(0), true);
     }
 
     // =========================================================================
@@ -209,20 +209,20 @@ contract AxonVaultTest is Test {
         vm.expectEmit(true, true, false, false);
         emit AxonVault.OperatorSet(operator, newOp);
 
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.setOperator(newOp);
     }
 
     function test_setOperator_to_zero_unsets_operator() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.setOperator(address(0));
         assertEq(vault.operator(), address(0));
     }
 
     function test_setOperator_reverts_if_same_as_owner() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.OperatorCannotBeOwner.selector);
-        vault.setOperator(principal);
+        vault.setOperator(vaultOwner);
     }
 
     function test_setOperator_reverts_non_owner() public {
@@ -263,14 +263,14 @@ contract AxonVaultTest is Test {
 
     function test_addBot_reverts_zero_address() public {
         AxonVault.BotConfigParams memory params;
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.ZeroAddress.selector);
         vault.addBot(address(0), params);
     }
 
     function test_addBot_reverts_already_exists() public {
         AxonVault.BotConfigParams memory params;
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.BotAlreadyExists.selector);
         vault.addBot(bot, params);
     }
@@ -284,27 +284,27 @@ contract AxonVaultTest is Test {
             aiTriggerThreshold: 0,
             requireAiVerification: false
         });
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.TooManySpendingLimits.selector);
         vault.addBot(bot2, params);
     }
 
     function test_removeBot_by_owner() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.removeBot(bot);
         assertFalse(vault.isBotActive(bot));
     }
 
     function test_removeBot_emits_event() public {
         vm.expectEmit(true, true, false, false);
-        emit AxonVault.BotRemoved(bot, principal);
+        emit AxonVault.BotRemoved(bot, vaultOwner);
 
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.removeBot(bot);
     }
 
     function test_removeBot_reverts_not_exists() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.BotDoesNotExist.selector);
         vault.removeBot(bot2);
     }
@@ -320,7 +320,7 @@ contract AxonVaultTest is Test {
             aiTriggerThreshold: 500 * USDC_DECIMALS,
             requireAiVerification: true
         });
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.updateBotConfig(bot, params);
 
         AxonVault.BotConfig memory config = vault.getBotConfig(bot);
@@ -330,7 +330,7 @@ contract AxonVaultTest is Test {
 
     function test_updateBotConfig_reverts_non_existent_bot() public {
         AxonVault.BotConfigParams memory params;
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.BotDoesNotExist.selector);
         vault.updateBotConfig(bot2, params);
     }
@@ -398,9 +398,9 @@ contract AxonVaultTest is Test {
 
     function test_operator_addBot_reverts_when_maxOperatorBots_zero() public {
         // Deploy fresh vault with default ceilings (maxOperatorBots = 0)
-        AxonVault freshVault = new AxonVault(principal, address(registry), true);
+        AxonVault freshVault = new AxonVault(vaultOwner, address(registry), true);
 
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         freshVault.setOperator(operator);
 
         AxonVault.BotConfigParams memory params;
@@ -418,7 +418,7 @@ contract AxonVaultTest is Test {
             vaultDailyAggregate: 10_000 * USDC_DECIMALS,
             minAiTriggerFloor: 500 * USDC_DECIMALS
         });
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.setOperatorCeilings(ceilings);
 
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
@@ -503,7 +503,7 @@ contract AxonVaultTest is Test {
             aiTriggerThreshold: 500 * USDC_DECIMALS,
             requireAiVerification: true
         });
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.updateBotConfig(bot, enableParams);
 
         // Now operator tries to disable it
@@ -528,7 +528,7 @@ contract AxonVaultTest is Test {
             aiTriggerThreshold: 0,
             requireAiVerification: false
         });
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addBot(bot2, params); // should not revert
 
         AxonVault.BotConfig memory config = vault.getBotConfig(bot2);
@@ -547,7 +547,7 @@ contract AxonVaultTest is Test {
     }
 
     function test_addGlobalDestination_allows_payment() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addGlobalDestination(recipient);
 
         AxonVault.PaymentIntent memory intent = _defaultIntent(100 * USDC_DECIMALS);
@@ -557,11 +557,11 @@ contract AxonVaultTest is Test {
 
     function test_addBotDestination_allows_payment() public {
         address other = makeAddr("other");
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addGlobalDestination(other); // only 'other' is whitelisted globally
 
         // recipient is not in global whitelist — add to bot-specific whitelist
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addBotDestination(bot, recipient);
 
         AxonVault.PaymentIntent memory intent = _defaultIntent(100 * USDC_DECIMALS);
@@ -571,7 +571,7 @@ contract AxonVaultTest is Test {
 
     function test_payment_reverts_destination_not_whitelisted() public {
         // Activate the whitelist by adding some other address
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addGlobalDestination(makeAddr("allowedDest"));
 
         AxonVault.PaymentIntent memory intent = _defaultIntent(100 * USDC_DECIMALS);
@@ -583,7 +583,7 @@ contract AxonVaultTest is Test {
     }
 
     function test_removeGlobalDestination_by_operator() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addGlobalDestination(recipient);
 
         vm.prank(operator);
@@ -602,9 +602,9 @@ contract AxonVaultTest is Test {
     // Deposit / Withdraw
     // =========================================================================
 
-    function test_deposit_by_principal() public {
-        usdc.mint(principal, 1_000 * USDC_DECIMALS);
-        vm.startPrank(principal);
+    function test_deposit_by_vaultOwner() public {
+        usdc.mint(vaultOwner, 1_000 * USDC_DECIMALS);
+        vm.startPrank(vaultOwner);
         usdc.approve(address(vault), 1_000 * USDC_DECIMALS);
         vault.deposit(address(usdc), 1_000 * USDC_DECIMALS, bytes32(0));
         vm.stopPrank();
@@ -623,12 +623,12 @@ contract AxonVaultTest is Test {
     }
 
     function test_deposit_emits_event() public {
-        usdc.mint(principal, 1_000 * USDC_DECIMALS);
-        vm.startPrank(principal);
+        usdc.mint(vaultOwner, 1_000 * USDC_DECIMALS);
+        vm.startPrank(vaultOwner);
         usdc.approve(address(vault), 1_000 * USDC_DECIMALS);
 
         vm.expectEmit(true, true, false, true);
-        emit AxonVault.Deposited(principal, address(usdc), 1_000 * USDC_DECIMALS, bytes32(0));
+        emit AxonVault.Deposited(vaultOwner, address(usdc), 1_000 * USDC_DECIMALS, bytes32(0));
         vault.deposit(address(usdc), 1_000 * USDC_DECIMALS, bytes32(0));
         vm.stopPrank();
     }
@@ -646,22 +646,22 @@ contract AxonVaultTest is Test {
     }
 
     function test_deposit_reverts_zero_amount() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.ZeroAmount.selector);
         vault.deposit(address(usdc), 0, bytes32(0));
     }
 
     function test_deposit_eth_reverts_zero_amount() public {
         address nativeEth = vault.NATIVE_ETH();
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.ZeroAmount.selector);
         vault.deposit{ value: 0 }(nativeEth, 0, bytes32(0));
     }
 
     function test_withdraw_by_owner() public {
-        vm.prank(principal);
-        vault.withdraw(address(usdc), 1_000 * USDC_DECIMALS, principal);
-        assertEq(usdc.balanceOf(principal), 1_000 * USDC_DECIMALS);
+        vm.prank(vaultOwner);
+        vault.withdraw(address(usdc), 1_000 * USDC_DECIMALS, vaultOwner);
+        assertEq(usdc.balanceOf(vaultOwner), 1_000 * USDC_DECIMALS);
     }
 
     function test_withdraw_reverts_non_owner() public {
@@ -671,15 +671,15 @@ contract AxonVaultTest is Test {
     }
 
     function test_withdraw_reverts_zero_address() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.ZeroAddress.selector);
         vault.withdraw(address(usdc), 1_000 * USDC_DECIMALS, address(0));
     }
 
     function test_withdraw_reverts_zero_amount() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.ZeroAmount.selector);
-        vault.withdraw(address(usdc), 0, principal);
+        vault.withdraw(address(usdc), 0, vaultOwner);
     }
 
     function test_operator_cannot_withdraw() public {
@@ -767,7 +767,7 @@ contract AxonVaultTest is Test {
     }
 
     function test_executePayment_reverts_inactive_bot() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.removeBot(bot);
 
         AxonVault.PaymentIntent memory intent = _defaultIntent(100 * USDC_DECIMALS);
@@ -804,7 +804,7 @@ contract AxonVaultTest is Test {
     function test_executePayment_reverts_maxPerTxAmount_exceeded() public {
         // Set bot's maxPerTxAmount to $2k, then try to send $3k
         AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](0);
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.updateBotConfig(
             bot,
             AxonVault.BotConfigParams({
@@ -839,7 +839,7 @@ contract AxonVaultTest is Test {
 
     function test_executePayment_no_replay_check_when_tracking_disabled() public {
         // Deploy vault without intent tracking
-        AxonVault noTrackVault = new AxonVault(principal, address(registry), false);
+        AxonVault noTrackVault = new AxonVault(vaultOwner, address(registry), false);
         usdc.mint(address(noTrackVault), VAULT_DEPOSIT);
 
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
@@ -849,7 +849,7 @@ contract AxonVaultTest is Test {
             aiTriggerThreshold: 0,
             requireAiVerification: false
         });
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         noTrackVault.addBot(bot, params);
 
         AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
@@ -881,7 +881,7 @@ contract AxonVaultTest is Test {
     }
 
     function test_executePayment_reverts_when_paused() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.pause();
 
         AxonVault.PaymentIntent memory intent = _defaultIntent(100 * USDC_DECIMALS);
@@ -897,11 +897,11 @@ contract AxonVaultTest is Test {
     // =========================================================================
 
     function test_owner_can_pause_and_unpause() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.pause();
         assertTrue(vault.paused());
 
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.unpause();
         assertFalse(vault.paused());
     }
@@ -913,7 +913,7 @@ contract AxonVaultTest is Test {
     }
 
     function test_operator_cannot_unpause() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.pause();
 
         vm.prank(operator);
@@ -1056,7 +1056,7 @@ contract AxonVaultTest is Test {
     }
 
     function test_operatorMaxDrainPerDay_zero_when_no_bots_allowed() public {
-        AxonVault freshVault = new AxonVault(principal, address(registry), true);
+        AxonVault freshVault = new AxonVault(vaultOwner, address(registry), true);
         // Default ceilings: maxOperatorBots = 0
         assertEq(freshVault.operatorMaxDrainPerDay(), 0);
     }
@@ -1069,7 +1069,7 @@ contract AxonVaultTest is Test {
             vaultDailyAggregate: 0, // no aggregate cap
             minAiTriggerFloor: 500 * USDC_DECIMALS
         });
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.setOperatorCeilings(c);
 
         // 3 bots × $5k = $15k theoretical, no aggregate cap
@@ -1082,9 +1082,9 @@ contract AxonVaultTest is Test {
 
     function test_ownership_transfer_two_step() public {
         address newOwner = makeAddr("newOwner");
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.transferOwnership(newOwner);
-        assertEq(vault.owner(), principal); // not transferred yet
+        assertEq(vault.owner(), vaultOwner); // not transferred yet
 
         vm.prank(newOwner);
         vault.acceptOwnership();
@@ -1107,7 +1107,7 @@ contract AxonVaultTest is Test {
             aiTriggerThreshold: 500 * USDC_DECIMALS,
             requireAiVerification: false
         });
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addBot(bot2, params);
 
         AxonVault.BotConfig memory config = vault.getBotConfig(bot2);
@@ -1136,7 +1136,7 @@ contract AxonVaultTest is Test {
             aiTriggerThreshold: 1_000 * USDC_DECIMALS,
             requireAiVerification: false
         });
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.updateBotConfig(bot, params);
 
         AxonVault.BotConfig memory config = vault.getBotConfig(bot);
@@ -1148,7 +1148,7 @@ contract AxonVaultTest is Test {
     // =========================================================================
 
     function test_GlobalBlacklist_BlocksPayment() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addGlobalBlacklist(recipient);
 
         AxonVault.PaymentIntent memory intent = _defaultIntent(100 * USDC_DECIMALS);
@@ -1161,10 +1161,10 @@ contract AxonVaultTest is Test {
 
     function test_BlacklistTakesPriorityOverWhitelist() public {
         // Add recipient to both whitelist and blacklist
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addGlobalDestination(recipient);
 
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addGlobalBlacklist(recipient);
 
         // Blacklist should win
@@ -1177,7 +1177,7 @@ contract AxonVaultTest is Test {
     }
 
     function test_OnlyOwnerCanRemoveBlacklist() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addGlobalBlacklist(recipient);
 
         // Operator cannot remove (loosening)
@@ -1186,7 +1186,7 @@ contract AxonVaultTest is Test {
         vault.removeGlobalBlacklist(recipient);
 
         // Owner can remove
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.removeGlobalBlacklist(recipient);
         assertEq(vault.globalBlacklistCount(), 0);
 
@@ -1205,7 +1205,7 @@ contract AxonVaultTest is Test {
     }
 
     function test_BlacklistBlocksSwapPayment() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addGlobalBlacklist(recipient);
 
         uint256 usdtOut = 495 * USDC_DECIMALS;
@@ -1230,16 +1230,16 @@ contract AxonVaultTest is Test {
     }
 
     function test_addGlobalBlacklist_reverts_zero_address() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.ZeroAddress.selector);
         vault.addGlobalBlacklist(address(0));
     }
 
     function test_addGlobalBlacklist_idempotent() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addGlobalBlacklist(recipient);
 
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addGlobalBlacklist(recipient); // second add — no-op
 
         assertEq(vault.globalBlacklistCount(), 1);
@@ -1258,8 +1258,8 @@ contract AxonVaultTest is Test {
     address constant NATIVE_ETH_ADDR = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
     function test_ReceiveETH() public {
-        vm.deal(principal, 10 ether);
-        vm.prank(principal);
+        vm.deal(vaultOwner, 10 ether);
+        vm.prank(vaultOwner);
         (bool success,) = address(vault).call{ value: 1 ether }("");
         assertTrue(success);
         assertEq(address(vault).balance, 1 ether);
@@ -1300,7 +1300,7 @@ contract AxonVaultTest is Test {
         vm.deal(address(vault), 5 ether);
         address withdrawTo = makeAddr("withdrawTo");
 
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.withdraw(NATIVE_ETH_ADDR, 2 ether, withdrawTo);
 
         assertEq(withdrawTo.balance, 2 ether);
@@ -1320,7 +1320,7 @@ contract AxonVaultTest is Test {
             aiTriggerThreshold: 0,
             requireAiVerification: false
         });
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addBot(ethBot, params);
     }
 
@@ -1501,18 +1501,18 @@ contract AxonVaultTest is Test {
         vm.expectEmit(true, false, false, false);
         emit AxonVault.ProtocolAdded(newProtocol);
 
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addProtocol(newProtocol);
     }
 
     function test_addProtocol_reverts_zero_address() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.ZeroAddress.selector);
         vault.addProtocol(address(0));
     }
 
     function test_addProtocol_reverts_already_approved() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.AlreadyApprovedProtocol.selector);
         vault.addProtocol(address(mockProtocol));
     }
@@ -1524,7 +1524,7 @@ contract AxonVaultTest is Test {
     }
 
     function test_removeProtocol_by_owner() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.removeProtocol(address(mockProtocol));
         assertFalse(vault.isProtocolApproved(address(mockProtocol)));
         assertEq(vault.approvedProtocolCount(), 0);
@@ -1540,12 +1540,12 @@ contract AxonVaultTest is Test {
         vm.expectEmit(true, false, false, false);
         emit AxonVault.ProtocolRemoved(address(mockProtocol));
 
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.removeProtocol(address(mockProtocol));
     }
 
     function test_removeProtocol_reverts_not_in_list() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.ProtocolNotInList.selector);
         vault.removeProtocol(makeAddr("notApproved"));
     }
@@ -1694,7 +1694,7 @@ contract AxonVaultTest is Test {
     }
 
     function test_executeProtocol_reverts_bot_not_active() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.removeBot(bot);
 
         bytes memory callData = abi.encodeCall(MockProtocol.closeTrade, (1));
@@ -1795,7 +1795,7 @@ contract AxonVaultTest is Test {
     function test_executeProtocol_reverts_maxPerTx_exceeded() public {
         // Set bot's maxPerTxAmount to $2k
         AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](0);
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.updateBotConfig(
             bot,
             AxonVault.BotConfigParams({
@@ -1827,7 +1827,7 @@ contract AxonVaultTest is Test {
     }
 
     function test_executeProtocol_reverts_when_paused() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.pause();
 
         bytes memory callData = abi.encodeCall(MockProtocol.closeTrade, (1));
@@ -1875,7 +1875,7 @@ contract AxonVaultTest is Test {
             aiTriggerThreshold: 0,
             requireAiVerification: false
         });
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addBot(bot2, params);
 
         uint256 bigAmount = 50_000 * USDC_DECIMALS;
@@ -1899,7 +1899,7 @@ contract AxonVaultTest is Test {
     }
 
     function test_executeProtocol_removed_protocol_blocks_execution() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.removeProtocol(address(mockProtocol));
 
         bytes memory callData = abi.encodeCall(MockProtocol.closeTrade, (1));
@@ -2104,7 +2104,7 @@ contract AxonVaultTest is Test {
     }
 
     function test_executeSwap_reverts_inactive_bot() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.removeBot(bot);
 
         AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
@@ -2159,7 +2159,7 @@ contract AxonVaultTest is Test {
     function test_executeSwap_reverts_maxRebalanceAmount_exceeded() public {
         // Set bot's maxRebalanceAmount to $2k (separate from payment maxPerTxAmount)
         AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](0);
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.updateBotConfig(
             bot,
             AxonVault.BotConfigParams({
@@ -2210,7 +2210,7 @@ contract AxonVaultTest is Test {
     }
 
     function test_executeSwap_reverts_when_paused() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.pause();
 
         AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
@@ -2233,7 +2233,7 @@ contract AxonVaultTest is Test {
 
     function test_executeSwap_rebalanceToken_whitelist_blocks_unlisted() public {
         // Owner adds only USDC to the rebalance whitelist
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addRebalanceTokens(_toArray(address(usdc)));
         assertEq(vault.rebalanceTokenCount(), 1);
 
@@ -2254,7 +2254,7 @@ contract AxonVaultTest is Test {
 
     function test_executeSwap_rebalanceToken_whitelist_allows_listed() public {
         // Owner adds USDT to the rebalance whitelist
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addRebalanceTokens(_toArray(address(usdt)));
 
         uint256 minOutput = 490 * USDC_DECIMALS;
@@ -2298,14 +2298,14 @@ contract AxonVaultTest is Test {
     }
 
     function test_rebalanceToken_owner_can_add() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addRebalanceTokens(_toArray(address(usdt)));
         assertTrue(vault.rebalanceTokenWhitelist(address(usdt)));
         assertEq(vault.rebalanceTokenCount(), 1);
     }
 
     function test_rebalanceToken_operator_can_remove() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addRebalanceTokens(_toArray(address(usdt)));
         assertEq(vault.rebalanceTokenCount(), 1);
 
@@ -2328,22 +2328,22 @@ contract AxonVaultTest is Test {
     }
 
     function test_rebalanceToken_add_zero_reverts() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.ZeroAddress.selector);
         vault.addRebalanceTokens(_toArray(address(0)));
     }
 
     function test_rebalanceToken_add_idempotent() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addRebalanceTokens(_toArray(address(usdt)));
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addRebalanceTokens(_toArray(address(usdt))); // no-op
         assertEq(vault.rebalanceTokenCount(), 1); // count not double-incremented
     }
 
     function test_rebalanceToken_remove_idempotent() public {
         // Remove a token that was never added — no-op
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.removeRebalanceTokens(_toArray(address(usdt)));
         assertEq(vault.rebalanceTokenCount(), 0);
     }
@@ -2351,7 +2351,7 @@ contract AxonVaultTest is Test {
     function test_executeSwap_maxRebalanceAmount_zero_means_no_cap() public {
         // maxRebalanceAmount = 0 means no cap on rebalancing
         AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](0);
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.updateBotConfig(
             bot,
             AxonVault.BotConfigParams({
@@ -2387,7 +2387,7 @@ contract AxonVaultTest is Test {
     function test_executeSwap_maxRebalanceAmount_checks_input_not_output() public {
         // maxRebalanceAmount = $2k — check is on INPUT (fromToken/maxFromAmount)
         AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](0);
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.updateBotConfig(
             bot,
             AxonVault.BotConfigParams({
@@ -2417,7 +2417,7 @@ contract AxonVaultTest is Test {
 
     function test_executePayment_swap_not_restricted_by_rebalance_whitelist() public {
         // Set rebalance whitelist to USDC only
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addRebalanceTokens(_toArray(address(usdc)));
         assertEq(vault.rebalanceTokenCount(), 1);
 
@@ -2448,7 +2448,7 @@ contract AxonVaultTest is Test {
         // maxPerTxAmount = $100 (for payments), maxRebalanceAmount = $10K (for rebalancing)
         // A $5K rebalance should succeed even though maxPerTxAmount is $100
         AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](0);
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.updateBotConfig(
             bot,
             AxonVault.BotConfigParams({
@@ -2490,7 +2490,7 @@ contract AxonVaultTest is Test {
         assertEq(configBefore.spendingLimits.length, 1);
 
         // Remove bot
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.removeBot(bot);
 
         // Re-register with a different limit
@@ -2504,7 +2504,7 @@ contract AxonVaultTest is Test {
             aiTriggerThreshold: 500 * USDC_DECIMALS,
             requireAiVerification: false
         });
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addBot(bot, params);
 
         // Should have exactly 1 limit (the new one), NOT 2
@@ -2530,9 +2530,9 @@ contract AxonVaultTest is Test {
             aiTriggerThreshold: 0,
             requireAiVerification: false
         });
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.OwnerCannotBeBot.selector);
-        vault.addBot(principal, params);
+        vault.addBot(vaultOwner, params);
     }
 
     /// @dev Owner cannot register as bot even if operator tries.
@@ -2549,7 +2549,7 @@ contract AxonVaultTest is Test {
         });
         vm.prank(operator);
         vm.expectRevert(AxonVault.OwnerCannotBeBot.selector);
-        vault.addBot(principal, params);
+        vault.addBot(vaultOwner, params);
     }
 
     /// @dev Operator can be registered as a bot — no restriction in contract.
@@ -2561,7 +2561,7 @@ contract AxonVaultTest is Test {
             aiTriggerThreshold: 0,
             requireAiVerification: false
         });
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addBot(operator, params);
         assertTrue(vault.isBotActive(operator));
     }
@@ -2578,21 +2578,21 @@ contract AxonVaultTest is Test {
             aiTriggerThreshold: 0,
             requireAiVerification: false
         });
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.BotAlreadyExists.selector);
         vault.addBot(bot, params);
     }
 
     /// @dev Cannot set owner address as operator.
     function test_setOperator_reverts_owner_address() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.OperatorCannotBeOwner.selector);
-        vault.setOperator(principal);
+        vault.setOperator(vaultOwner);
     }
 
     /// @dev Setting operator to zero address is valid (unsets operator).
     function test_setOperator_zero_address_unsets() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.setOperator(address(0));
         assertEq(vault.operator(), address(0));
     }
@@ -2600,15 +2600,15 @@ contract AxonVaultTest is Test {
     /// @dev Cannot register zero address as a bot.
     function test_addBot_reverts_zero_address_bot() public {
         AxonVault.BotConfigParams memory params;
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.ZeroAddress.selector);
         vault.addBot(address(0), params);
     }
 
     /// @dev Same bot address can be registered on different vaults (independent storage).
     function test_same_bot_on_different_vaults() public {
-        // Deploy a second vault for the same principal
-        AxonVault vault2 = new AxonVault(principal, address(registry), true);
+        // Deploy a second vault for the same vaultOwner
+        AxonVault vault2 = new AxonVault(vaultOwner, address(registry), true);
 
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 500 * USDC_DECIMALS,
@@ -2619,7 +2619,7 @@ contract AxonVaultTest is Test {
         });
 
         // bot is already on vault (setUp). Add to vault2.
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault2.addBot(bot, params);
 
         // Both vaults have the same bot independently
@@ -2627,7 +2627,7 @@ contract AxonVaultTest is Test {
         assertTrue(vault2.isBotActive(bot));
 
         // Removing from one doesn't affect the other
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault2.removeBot(bot);
         assertTrue(vault.isBotActive(bot));
         assertFalse(vault2.isBotActive(bot));
@@ -2668,7 +2668,7 @@ contract AxonVaultTest is Test {
 
     /// @dev Attacker cannot remove from global destination whitelist.
     function test_removeGlobalDestination_reverts_non_authorized() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addGlobalDestination(recipient);
 
         vm.prank(attacker);
@@ -2692,7 +2692,7 @@ contract AxonVaultTest is Test {
 
     /// @dev Attacker cannot remove from bot destination whitelist.
     function test_removeBotDestination_reverts_non_authorized() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addBotDestination(bot, recipient);
 
         vm.prank(attacker);
@@ -2709,7 +2709,7 @@ contract AxonVaultTest is Test {
 
     /// @dev Attacker cannot remove from global blacklist (owner-only).
     function test_removeGlobalBlacklist_reverts_non_owner() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addGlobalBlacklist(recipient);
 
         vm.prank(attacker);
@@ -2719,7 +2719,7 @@ contract AxonVaultTest is Test {
 
     /// @dev Operator cannot remove from global blacklist (owner-only, loosening).
     function test_removeGlobalBlacklist_reverts_operator() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.addGlobalBlacklist(recipient);
 
         vm.prank(operator);
@@ -2729,7 +2729,7 @@ contract AxonVaultTest is Test {
 
     /// @dev Attacker cannot unpause.
     function test_unpause_reverts_non_owner() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.pause();
 
         vm.prank(attacker);
@@ -2739,7 +2739,7 @@ contract AxonVaultTest is Test {
 
     /// @dev Operator cannot unpause (owner-only).
     function test_unpause_reverts_operator() public {
-        vm.prank(principal);
+        vm.prank(vaultOwner);
         vault.pause();
 
         vm.prank(operator);

@@ -8,7 +8,7 @@ Solidity contracts for the Axon vault system. Built with [Foundry](https://book.
 | ------------------ | --------------------------------------------------------------------------------------------------------- |
 | `RelayerRegistry`  | Axon-controlled whitelist of authorized relayer addresses. All vaults point to this.                      |
 | `AxonVaultFactory` | Permissionless factory. Any address deploys a vault in one transaction.                                   |
-| `AxonVault`        | Per-principal treasury vault. Holds funds, enforces bot spending limits, verifies EIP-712 signed intents. |
+| `AxonVault`        | Per-owner treasury vault. Holds funds, enforces bot spending limits, verifies EIP-712 signed intents. |
 
 ---
 

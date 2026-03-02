@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "./AxonVault.sol";
 
 /// @title AxonVaultFactory
-/// @notice Deploys AxonVault instances for Principals.
+/// @notice Deploys AxonVault instances for Owners.
 ///         One factory is deployed per chain by Axon. All vaults on this chain
 ///         share the same AxonRegistry (immutably set in each vault at deploy time).
 ///         The factory stores a record of all deployed vaults for indexing and admin tooling.
@@ -16,7 +16,7 @@ contract AxonVaultFactory is Ownable2Step {
     /// @notice All vaults ever deployed from this factory, in order of deployment.
     address[] public allVaults;
 
-    /// @notice Vaults deployed by each Principal address.
+    /// @notice Vaults deployed by each Owner address.
     mapping(address => address[]) public ownerVaults;
 
     event VaultDeployed(
@@ -30,7 +30,7 @@ contract AxonVaultFactory is Ownable2Step {
         axonRegistry = _axonRegistry;
     }
 
-    /// @notice Deploy a new AxonVault for the caller (the Principal).
+    /// @notice Deploy a new AxonVault for the caller (the Owner).
     ///         The vault is owned by msg.sender and uses this factory's AxonRegistry.
     /// @param trackUsedIntents If true, the vault tracks used intent hashes to prevent duplicates.
     ///                         Set to false only for extreme high-frequency trading bots.
@@ -49,7 +49,7 @@ contract AxonVaultFactory is Ownable2Step {
         return allVaults.length;
     }
 
-    /// @notice Number of vaults deployed by a specific Principal.
+    /// @notice Number of vaults deployed by a specific Owner.
     function ownerVaultCount(address owner) external view returns (uint256) {
         return ownerVaults[owner].length;
     }

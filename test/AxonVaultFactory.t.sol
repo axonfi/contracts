@@ -114,7 +114,7 @@ contract AxonVaultFactoryTest is Test {
         assertEq(factory.allVaults(1), vault2);
     }
 
-    function test_ownerVaultCount_per_principal() public {
+    function test_ownerVaultCount_per_owner() public {
         vm.prank(alice);
         factory.deployVault(true);
 
@@ -140,7 +140,7 @@ contract AxonVaultFactoryTest is Test {
         assertEq(factory.ownerVaults(alice, 1), vault2);
     }
 
-    function test_multiple_principals_independent_vaults() public {
+    function test_multiple_owners_independent_vaults() public {
         vm.prank(alice);
         address aliceVault = factory.deployVault(true);
 
