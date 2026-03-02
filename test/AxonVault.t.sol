@@ -86,7 +86,7 @@ contract AxonVaultTest is Test {
         registry.setOracleConfig(dummyV3Factory, address(usdc), dummyWeth);
 
         // Deploy vault owned by vaultOwner
-        vault = new AxonVault(vaultOwner, address(registry), true);
+        vault = new AxonVault(vaultOwner, address(registry));
 
         // Fund vault
         usdc.mint(address(vault), VAULT_DEPOSIT);
@@ -170,30 +170,21 @@ contract AxonVaultTest is Test {
     // Deployment
     // =========================================================================
 
-    function test_version_is_4() public view {
-        assertEq(vault.VERSION(), 4);
+    function test_version_is_5() public view {
+        assertEq(vault.VERSION(), 5);
     }
 
     function test_axonRegistry_is_immutable() public view {
         assertEq(vault.axonRegistry(), address(registry));
     }
 
-    function test_trackUsedIntents_set_at_deploy() public view {
-        assertTrue(vault.trackUsedIntents());
-    }
-
     function test_owner_is_vaultOwner() public view {
         assertEq(vault.owner(), vaultOwner);
     }
 
-    function test_deploy_without_intent_tracking() public {
-        AxonVault noTrack = new AxonVault(vaultOwner, address(registry), false);
-        assertFalse(noTrack.trackUsedIntents());
-    }
-
     function test_deploy_reverts_zero_registry() public {
         vm.expectRevert(AxonVault.ZeroAddress.selector);
-        new AxonVault(vaultOwner, address(0), true);
+        new AxonVault(vaultOwner, address(0));
     }
 
     // =========================================================================
@@ -398,7 +389,7 @@ contract AxonVaultTest is Test {
 
     function test_operator_addBot_reverts_when_maxOperatorBots_zero() public {
         // Deploy fresh vault with default ceilings (maxOperatorBots = 0)
-        AxonVault freshVault = new AxonVault(vaultOwner, address(registry), true);
+        AxonVault freshVault = new AxonVault(vaultOwner, address(registry));
 
         vm.prank(vaultOwner);
         freshVault.setOperator(operator);
@@ -837,49 +828,6 @@ contract AxonVaultTest is Test {
         vault.executePayment(intent, sig, address(0), 0, address(0), "");
     }
 
-    function test_executePayment_no_replay_check_when_tracking_disabled() public {
-        // Deploy vault without intent tracking
-        AxonVault noTrackVault = new AxonVault(vaultOwner, address(registry), false);
-        usdc.mint(address(noTrackVault), VAULT_DEPOSIT);
-
-        AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
-            maxPerTxAmount: 0,
-            maxRebalanceAmount: 0,
-            spendingLimits: new AxonVault.SpendingLimit[](0),
-            aiTriggerThreshold: 0,
-            requireAiVerification: false
-        });
-        vm.prank(vaultOwner);
-        noTrackVault.addBot(bot, params);
-
-        AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
-            bot: bot,
-            to: recipient,
-            token: address(usdc),
-            amount: 100 * USDC_DECIMALS,
-            deadline: _deadline(),
-            ref: bytes32("ref")
-        });
-
-        bytes32 structHash = keccak256(
-            abi.encode(
-                PAYMENT_INTENT_TYPEHASH, intent.bot, intent.to, intent.token, intent.amount, intent.deadline, intent.ref
-            )
-        );
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", noTrackVault.DOMAIN_SEPARATOR(), structHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(BOT_KEY, digest);
-        bytes memory sig = abi.encodePacked(r, s, v);
-
-        vm.prank(relayer);
-        noTrackVault.executePayment(intent, sig, address(0), 0, address(0), "");
-
-        // Same intent again — should NOT revert (tracking disabled)
-        vm.prank(relayer);
-        noTrackVault.executePayment(intent, sig, address(0), 0, address(0), "");
-
-        assertEq(usdc.balanceOf(recipient), 200 * USDC_DECIMALS);
-    }
-
     function test_executePayment_reverts_when_paused() public {
         vm.prank(vaultOwner);
         vault.pause();
@@ -1056,7 +1004,7 @@ contract AxonVaultTest is Test {
     }
 
     function test_operatorMaxDrainPerDay_zero_when_no_bots_allowed() public {
-        AxonVault freshVault = new AxonVault(vaultOwner, address(registry), true);
+        AxonVault freshVault = new AxonVault(vaultOwner, address(registry));
         // Default ceilings: maxOperatorBots = 0
         assertEq(freshVault.operatorMaxDrainPerDay(), 0);
     }
@@ -1252,10 +1200,100 @@ contract AxonVaultTest is Test {
     }
 
     // =========================================================================
+    // Destination whitelist edge cases
+    // =========================================================================
+
+    /// @dev Adding the same global destination twice does not double-increment the counter.
+    function test_addGlobalDestination_idempotent() public {
+        vm.prank(vaultOwner);
+        vault.addGlobalDestination(recipient);
+
+        vm.prank(vaultOwner);
+        vault.addGlobalDestination(recipient); // second add — no-op
+
+        assertEq(vault.globalDestinationCount(), 1);
+        assertTrue(vault.globalDestinationWhitelist(recipient));
+    }
+
+    /// @dev Removing all global destinations resets the counter to zero.
+    function test_removeAllGlobalDestinations_countZero() public {
+        address dest1 = makeAddr("dest1");
+        address dest2 = makeAddr("dest2");
+        address dest3 = makeAddr("dest3");
+
+        vm.startPrank(vaultOwner);
+        vault.addGlobalDestination(dest1);
+        vault.addGlobalDestination(dest2);
+        vault.addGlobalDestination(dest3);
+        vm.stopPrank();
+        assertEq(vault.globalDestinationCount(), 3);
+
+        vm.startPrank(vaultOwner);
+        vault.removeGlobalDestination(dest1);
+        vault.removeGlobalDestination(dest2);
+        vault.removeGlobalDestination(dest3);
+        vm.stopPrank();
+
+        assertEq(vault.globalDestinationCount(), 0);
+        assertFalse(vault.globalDestinationWhitelist(dest1));
+        assertFalse(vault.globalDestinationWhitelist(dest2));
+        assertFalse(vault.globalDestinationWhitelist(dest3));
+
+        // With count = 0, any destination is now allowed again
+        AxonVault.PaymentIntent memory intent = _defaultIntent(100 * USDC_DECIMALS);
+        _executePayment(intent);
+        assertEq(usdc.balanceOf(recipient), 100 * USDC_DECIMALS);
+    }
+
+    /// @dev Adding the same bot destination twice does not double-increment the counter.
+    function test_addBotDestination_idempotent() public {
+        vm.prank(vaultOwner);
+        vault.addBotDestination(bot, recipient);
+
+        vm.prank(vaultOwner);
+        vault.addBotDestination(bot, recipient); // second add — no-op
+
+        assertEq(vault.botDestinationCount(bot), 1);
+    }
+
+    /// @dev Removing a non-existent global destination is a no-op (count unchanged).
+    function test_removeGlobalDestination_nonexistent_noop() public {
+        assertEq(vault.globalDestinationCount(), 0);
+
+        vm.prank(vaultOwner);
+        vault.removeGlobalDestination(recipient); // not in list — no-op
+
+        assertEq(vault.globalDestinationCount(), 0);
+    }
+
+    // =========================================================================
     // Native ETH support
     // =========================================================================
 
     address constant NATIVE_ETH_ADDR = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
+
+    /// @dev PaymentExecuted event emits the NATIVE_ETH sentinel address when paying ETH.
+    function test_ExecutePaymentETH_emitsCorrectToken() public {
+        uint256 ethBotKey = 0xE7B07;
+        address ethBot = _ethBot();
+        vm.deal(address(vault), 10 ether);
+
+        AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
+            bot: ethBot,
+            to: recipient,
+            token: NATIVE_ETH_ADDR,
+            amount: 1 ether,
+            deadline: _deadline(),
+            ref: bytes32("eth-event-001")
+        });
+        bytes memory sig = _signPayment(ethBotKey, intent);
+
+        vm.expectEmit(true, true, true, true);
+        emit AxonVault.PaymentExecuted(ethBot, recipient, NATIVE_ETH_ADDR, 1 ether, bytes32("eth-event-001"));
+
+        vm.prank(relayer);
+        vault.executePayment(intent, sig, address(0), 0, address(0), "");
+    }
 
     function test_ReceiveETH() public {
         vm.deal(vaultOwner, 10 ether);
@@ -2057,6 +2095,39 @@ contract AxonVaultTest is Test {
         vault.executeSwap(intent, sig, address(usdc), 100 * USDC_DECIMALS, address(swapRouter), "");
     }
 
+    function test_executeSwap_reverts_same_token() public {
+        AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
+            bot: bot,
+            toToken: address(usdc),
+            minToAmount: 100 * USDC_DECIMALS,
+            deadline: _deadline(),
+            ref: bytes32("ref")
+        });
+        bytes memory sig = _signSwap(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.SameTokenSwap.selector);
+        // fromToken == toToken (both USDC)
+        vault.executeSwap(intent, sig, address(usdc), 100 * USDC_DECIMALS, address(swapRouter), "");
+    }
+
+    function test_executePayment_swap_reverts_same_token() public {
+        AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
+            bot: bot,
+            to: recipient,
+            token: address(usdc),
+            amount: 200_000 * USDC_DECIMALS,
+            deadline: _deadline(),
+            ref: bytes32("same-token-ref")
+        });
+        bytes memory sig = _signPayment(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.SameTokenSwap.selector);
+        // Vault only has 100k USDC, needs 200k, tries to swap USDC→USDC
+        vault.executePayment(intent, sig, address(usdc), 200_000 * USDC_DECIMALS, address(swapRouter), "");
+    }
+
     function test_executeSwap_reverts_expired_deadline() public {
         AxonVault.SwapIntent memory intent = AxonVault.SwapIntent({
             bot: bot,
@@ -2608,7 +2679,7 @@ contract AxonVaultTest is Test {
     /// @dev Same bot address can be registered on different vaults (independent storage).
     function test_same_bot_on_different_vaults() public {
         // Deploy a second vault for the same vaultOwner
-        AxonVault vault2 = new AxonVault(vaultOwner, address(registry), true);
+        AxonVault vault2 = new AxonVault(vaultOwner, address(registry));
 
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 500 * USDC_DECIMALS,

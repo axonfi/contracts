@@ -43,32 +43,20 @@ contract AxonVaultFactoryTest is Test {
 
     function test_deployVault_returns_vault_address() public {
         vm.prank(alice);
-        address vault = factory.deployVault(true);
+        address vault = factory.deployVault();
         assertNotEq(vault, address(0));
     }
 
     function test_deployVault_owner_is_caller() public {
         vm.prank(alice);
-        address vault = factory.deployVault(true);
+        address vault = factory.deployVault();
         assertEq(AxonVault(payable(vault)).owner(), alice);
     }
 
     function test_deployVault_uses_factory_registry() public {
         vm.prank(alice);
-        address vault = factory.deployVault(true);
+        address vault = factory.deployVault();
         assertEq(AxonVault(payable(vault)).axonRegistry(), address(registry));
-    }
-
-    function test_deployVault_trackUsedIntents_true() public {
-        vm.prank(alice);
-        address vault = factory.deployVault(true);
-        assertTrue(AxonVault(payable(vault)).trackUsedIntents());
-    }
-
-    function test_deployVault_trackUsedIntents_false() public {
-        vm.prank(alice);
-        address vault = factory.deployVault(false);
-        assertFalse(AxonVault(payable(vault)).trackUsedIntents());
     }
 
     function test_deployVault_emits_event() public {
@@ -76,15 +64,15 @@ contract AxonVaultFactoryTest is Test {
 
         // We don't know the vault address upfront, so check non-indexed fields
         vm.expectEmit(true, false, false, true);
-        emit AxonVaultFactory.VaultDeployed(alice, address(0), 4, address(registry), true);
+        emit AxonVaultFactory.VaultDeployed(alice, address(0), 5, address(registry));
 
-        factory.deployVault(true);
+        factory.deployVault();
     }
 
-    function test_deployVault_version_is_4() public {
+    function test_deployVault_version_is_5() public {
         vm.prank(alice);
-        address vault = factory.deployVault(true);
-        assertEq(AxonVault(payable(vault)).VERSION(), 4);
+        address vault = factory.deployVault();
+        assertEq(AxonVault(payable(vault)).VERSION(), 5);
     }
 
     // =========================================================================
@@ -95,20 +83,20 @@ contract AxonVaultFactoryTest is Test {
         assertEq(factory.vaultCount(), 0);
 
         vm.prank(alice);
-        factory.deployVault(true);
+        factory.deployVault();
         assertEq(factory.vaultCount(), 1);
 
         vm.prank(bob);
-        factory.deployVault(true);
+        factory.deployVault();
         assertEq(factory.vaultCount(), 2);
     }
 
     function test_allVaults_records_deployments() public {
         vm.prank(alice);
-        address vault1 = factory.deployVault(true);
+        address vault1 = factory.deployVault();
 
         vm.prank(bob);
-        address vault2 = factory.deployVault(false);
+        address vault2 = factory.deployVault();
 
         assertEq(factory.allVaults(0), vault1);
         assertEq(factory.allVaults(1), vault2);
@@ -116,13 +104,13 @@ contract AxonVaultFactoryTest is Test {
 
     function test_ownerVaultCount_per_owner() public {
         vm.prank(alice);
-        factory.deployVault(true);
+        factory.deployVault();
 
         vm.prank(alice);
-        factory.deployVault(false); // alice deploys a second vault
+        factory.deployVault(); // alice deploys a second vault
 
         vm.prank(bob);
-        factory.deployVault(true);
+        factory.deployVault();
 
         assertEq(factory.ownerVaultCount(alice), 2);
         assertEq(factory.ownerVaultCount(bob), 1);
@@ -131,10 +119,10 @@ contract AxonVaultFactoryTest is Test {
 
     function test_ownerVaults_records_correct_addresses() public {
         vm.prank(alice);
-        address vault1 = factory.deployVault(true);
+        address vault1 = factory.deployVault();
 
         vm.prank(alice);
-        address vault2 = factory.deployVault(false);
+        address vault2 = factory.deployVault();
 
         assertEq(factory.ownerVaults(alice, 0), vault1);
         assertEq(factory.ownerVaults(alice, 1), vault2);
@@ -142,10 +130,10 @@ contract AxonVaultFactoryTest is Test {
 
     function test_multiple_owners_independent_vaults() public {
         vm.prank(alice);
-        address aliceVault = factory.deployVault(true);
+        address aliceVault = factory.deployVault();
 
         vm.prank(bob);
-        address bobVault = factory.deployVault(true);
+        address bobVault = factory.deployVault();
 
         assertNotEq(aliceVault, bobVault);
         assertEq(AxonVault(payable(aliceVault)).owner(), alice);
@@ -164,7 +152,7 @@ contract AxonVaultFactoryTest is Test {
         registry.addSwapRouter(uniswap);
 
         vm.prank(alice);
-        address vault = factory.deployVault(true);
+        address vault = factory.deployVault();
 
         // Vault can query the registry via its axonRegistry reference
         assertEq(AxonVault(payable(vault)).axonRegistry(), address(registry));

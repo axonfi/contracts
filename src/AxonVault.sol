@@ -36,7 +36,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     // Constants
     // =========================================================================
 
-    uint16 public constant VERSION = 4;
+    uint16 public constant VERSION = 5;
     uint8 public constant MAX_SPENDING_LIMITS = 5;
     address public constant NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
@@ -133,10 +133,6 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     /// @notice Axon's AxonRegistry for this chain. Immutable — set at deploy, never changes.
     address public immutable axonRegistry;
 
-    /// @notice If true, executed intent hashes are stored to prevent exact duplicate submissions.
-    ///         Set at deploy. Disable only for extreme high-frequency bots that need maximum throughput.
-    bool public immutable trackUsedIntents;
-
     // =========================================================================
     // Mutable state
     // =========================================================================
@@ -155,6 +151,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     // Destination whitelists (empty = any destination allowed; non-empty = restrict to listed)
     mapping(address => bool) public globalDestinationWhitelist;
     uint256 public globalDestinationCount;
+
     mapping(address => mapping(address => bool)) public botDestinationWhitelist;
     mapping(address => uint256) public botDestinationCount;
 
@@ -162,7 +159,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     mapping(address => bool) public globalDestinationBlacklist;
     uint256 public globalBlacklistCount;
 
-    // Intent deduplication (only active if trackUsedIntents = true)
+    // Intent deduplication — always active
     mapping(bytes32 => bool) public usedIntents;
 
     // Per-vault approved DeFi protocols (owner manages — NOT in AxonRegistry)
@@ -184,6 +181,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     event BotConfigUpdated(address indexed bot, address indexed updatedBy);
 
     event PaymentExecuted(address indexed bot, address indexed to, address indexed token, uint256 amount, bytes32 ref);
+
     event SwapPaymentExecuted(
         address indexed bot,
         address indexed to,
@@ -256,6 +254,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     error InsufficientBalance();
     error RebalanceTokenNotAllowed();
     error MaxRebalanceAmountExceeded();
+    error SameTokenSwap();
 
     // =========================================================================
     // Modifiers
@@ -279,14 +278,9 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
 
     /// @param _owner           The Owner — vault owner, cold wallet recommended.
     /// @param _axonRegistry    Axon's AxonRegistry for this chain. Immutable.
-    /// @param _trackUsedIntents If true, intent hashes are tracked to prevent duplicates.
-    constructor(address _owner, address _axonRegistry, bool _trackUsedIntents)
-        Ownable(_owner)
-        EIP712("AxonVault", "1")
-    {
+    constructor(address _owner, address _axonRegistry) Ownable(_owner) EIP712("AxonVault", "1") {
         if (_axonRegistry == address(0)) revert ZeroAddress();
         axonRegistry = _axonRegistry;
-        trackUsedIntents = _trackUsedIntents;
     }
 
     // =========================================================================
@@ -603,11 +597,9 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
 
         if (intentHash.recover(signature) != intent.bot) revert InvalidSignature();
 
-        // Optional deduplication — prevents exact duplicate submissions
-        if (trackUsedIntents) {
-            if (usedIntents[intentHash]) revert IntentAlreadyUsed();
-            usedIntents[intentHash] = true;
-        }
+        // Deduplication — prevents exact duplicate submissions
+        if (usedIntents[intentHash]) revert IntentAlreadyUsed();
+        usedIntents[intentHash] = true;
 
         // Hard per-tx cap (USD-denominated via TWAP oracle)
         _checkMaxPerTxAmount(bot, intent.token, intent.amount);
@@ -625,6 +617,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
             emit PaymentExecuted(intent.bot, intent.to, intent.token, intent.amount, intent.ref);
         } else if (fromToken != address(0)) {
             // Swap needed — vault doesn't have enough of the output token
+            if (fromToken == intent.token) revert SameTokenSwap();
             if (!IAxonRegistry(axonRegistry).isApprovedSwapRouter(swapRouter)) revert RouterNotApproved();
 
             // Snapshot balances before swap
@@ -676,6 +669,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         bytes calldata swapCalldata
     ) external nonReentrant whenNotPaused onlyRelayer {
         if (intent.minToAmount == 0) revert ZeroAmount();
+        if (fromToken == intent.toToken) revert SameTokenSwap();
         if (block.timestamp > intent.deadline) revert DeadlineExpired();
         if (!IAxonRegistry(axonRegistry).isApprovedSwapRouter(swapRouter)) revert RouterNotApproved();
 
@@ -691,10 +685,9 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         bytes32 intentHash = _hashTypedDataV4(structHash);
         if (intentHash.recover(signature) != intent.bot) revert InvalidSignature();
 
-        if (trackUsedIntents) {
-            if (usedIntents[intentHash]) revert IntentAlreadyUsed();
-            usedIntents[intentHash] = true;
-        }
+        // Deduplication — prevents exact duplicate submissions
+        if (usedIntents[intentHash]) revert IntentAlreadyUsed();
+        usedIntents[intentHash] = true;
 
         // Rebalance token whitelist — only restricts standalone swaps, not payment routing
         _checkRebalanceToken(intent.toToken);
@@ -770,11 +763,9 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
 
         if (intentHash.recover(signature) != intent.bot) revert InvalidSignature();
 
-        // Optional deduplication
-        if (trackUsedIntents) {
-            if (usedIntents[intentHash]) revert IntentAlreadyUsed();
-            usedIntents[intentHash] = true;
-        }
+        // Deduplication — prevents exact duplicate submissions
+        if (usedIntents[intentHash]) revert IntentAlreadyUsed();
+        usedIntents[intentHash] = true;
 
         // Per-tx cap on approval amount (USD-denominated via TWAP oracle)
         if (intent.amount > 0) {
@@ -783,6 +774,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
 
         // Pre-swap if vault doesn't have enough of the required token
         if (fromToken != address(0) && intent.amount > 0) {
+            if (fromToken == intent.token) revert SameTokenSwap();
             uint256 vaultBalance = IERC20(intent.token).balanceOf(address(this));
             if (vaultBalance < intent.amount) {
                 if (!IAxonRegistry(axonRegistry).isApprovedSwapRouter(swapRouter)) revert RouterNotApproved();
