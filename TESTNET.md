@@ -11,7 +11,16 @@
 | Contract                | Address                                      |
 | ----------------------- | -------------------------------------------- |
 | AxonRegistry (v3+)      | `0xEF9280ee20DBc78c73e71874bbC234d4023eaD14` |
-| AxonVaultFactory (v4)   | `0x7fCd3b48D6DF01e8E309d8e6097Ad77C3e84bf72` |
+| AxonVaultFactory (v5)   | `0x5Fb75454D191e110776B058b2a10989A9E446FF1` |
+| Test Vault (v5)         | `0x0Bc5DF90FA4FE46179E2fEd508e4987863059932` |
+
+<details>
+<summary>Old deployments (archived)</summary>
+
+| Contract                | Address                                      |
+| ----------------------- | -------------------------------------------- |
+| Old Factory (v4)        | `0x7fCd3b48D6DF01e8E309d8e6097Ad77C3e84bf72` |
+| Old Test Vault (v4)     | `0x16f089d32866b36a1308c6ac77113caa4b890a98` |
 | Old Factory (v3)        | `0x73b971B40D65520514A64Da8cFbC656Ce276d1DA` |
 | Old Test Vault (v3)     | `0x6f49704bf51ee0f4f9632462b1663725543a37f9` |
 | Old Registry (v2)       | `0x21340E5066d1C51FA58CDbCaE492407f2a109e64` |
@@ -21,6 +30,8 @@
 | Old Factory (v1)        | `0x55D71180ed38EBc0E2959840589BF4506A05641a` |
 | Old Factory (v2-pre)    | `0xCC75dC0F9617AAF4179EDD9F7d27B67aA4DC60E6` |
 | Old Vault (v2-pre)      | `0xdC3b0a3246e63983fAC310D2c8aE4991Fe69cA08` |
+
+</details>
 | USDC                    | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | USDT                    | `0x323e78f944A9a1FcF3a10efcC5319DBb0bB6e673` |
 | WETH                    | `0x4200000000000000000000000000000000000006` |

@@ -4,8 +4,7 @@ set -euo pipefail
 # Deploy a vault via the factory and register it with the relayer.
 #
 # Usage:
-#   ./script/deploy-vault.sh                          # defaults: Base Sepolia, track intents
-#   ./script/deploy-vault.sh --no-track               # disable intent tracking
+#   ./script/deploy-vault.sh                          # defaults: Base Sepolia
 #   FACTORY=0x... ./script/deploy-vault.sh             # custom factory
 #   RELAYER_URL=https://relay.axonfi.xyz ./script/deploy-vault.sh
 #
@@ -26,14 +25,6 @@ fi
 RPC_URL="${RPC_URL:-https://sepolia.base.org}"
 CHAIN_ID="${CHAIN_ID:-84532}"
 RELAYER_URL="${RELAYER_URL:-http://localhost:3000}"
-TRACK_INTENTS=true
-
-# Parse flags
-for arg in "$@"; do
-  case $arg in
-    --no-track) TRACK_INTENTS=false ;;
-  esac
-done
 
 # Resolve factory address
 if [ -z "${FACTORY:-}" ]; then
@@ -58,7 +49,6 @@ echo "Chain ID   : $CHAIN_ID"
 echo "RPC        : $RPC_URL"
 echo "Factory    : $FACTORY"
 echo "Deployer   : $DEPLOYER"
-echo "Track      : $TRACK_INTENTS"
 echo ""
 
 # ── TOS pre-flight check ───────────────────────────────────────────────
@@ -86,7 +76,7 @@ echo ""
 
 # ── Deploy ──────────────────────────────────────────────────────────────
 echo "Deploying vault..."
-TX_OUTPUT=$(cast send "$FACTORY" "deployVault(bool)" "$TRACK_INTENTS" \
+TX_OUTPUT=$(cast send "$FACTORY" "deployVault()" \
   --private-key "$PRIVATE_KEY" \
   --rpc-url "$RPC_URL" \
   --json 2>&1)
