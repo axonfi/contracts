@@ -1,0 +1,7 @@
+testMode: "property"
+testLimit: 50000
+seqLen: 100
+shrinkLimit: 5000
+deployer: "0x30000"
+sender: ["0x10000", "0x20000", "0x30000"]
+cryticArgs: ["--compile-force-framework", "foundry"]

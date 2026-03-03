@@ -1,0 +1,12 @@
+# Foundry
+out/
+cache/
+broadcast/
+
+# Security tool artifacts
+crytic-export/
+slither_results.json
+report.md
+
+# Environment
+.env

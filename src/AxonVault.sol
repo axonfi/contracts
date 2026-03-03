@@ -545,7 +545,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     }
 
     /// @notice Withdraw tokens or native ETH. Owner only — non-custodial guarantee.
-    function withdraw(address token, uint256 amount, address to) external onlyOwner nonReentrant {
+    function withdraw(address token, uint256 amount, address to) external nonReentrant onlyOwner {
         if (amount == 0) revert ZeroAmount();
         if (to == address(0)) revert ZeroAddress();
         _transferOut(token, to, amount);

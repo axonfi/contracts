@@ -1,0 +1,10 @@
+{
+  "remappings": [
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"
+  ],
+  "viaIR": true,
+  "optimizer": {
+    "enabled": true,
+    "runs": 200
+  }
+}

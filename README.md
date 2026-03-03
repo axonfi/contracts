@@ -29,7 +29,47 @@ forge test --gas-report
 
 # Run a specific test
 forge test --match-test test_executePayment_transfers_funds -vvvv
+
+# Format
+forge fmt
 ```
+
+### Security Analysis
+
+Static analyzers and fuzzers for auditing contracts before deployment.
+
+```bash
+# Slither — static analysis (Trail of Bits)
+# Detects reentrancy, access control, and common vulnerability patterns.
+pip install slither-analyzer  # one-time install
+slither . --foundry-out-directory out/
+
+# Aderyn — static analysis (Cyfrin)
+# Rust-based, fast. Generates report.md with categorized findings.
+# Install: cargo install aderyn (or brew)
+aderyn .
+
+# Mythril — symbolic execution (ConsenSys)
+# Explores execution paths to find reachable bugs. Slow but thorough.
+pip install mythril  # one-time install
+myth analyze src/AxonVault.sol \
+  --solc-json mythril.config.json \
+  --solv 0.8.25 \
+  --execution-timeout 300
+
+# Echidna — property-based fuzzer (Trail of Bits)
+# Runs invariant tests from src/test/AxonVaultEchidna.sol.
+# Install: brew install echidna
+echidna . --contract AxonVaultEchidna --config echidna.yaml --test-mode property
+
+# All static analyzers (shortcut)
+make audit
+```
+
+Fuzz harness lives at `src/test/AxonVaultEchidna.sol` (in `src/` for crytic-compile compatibility).
+It tests 6 invariants: balance conservation, setup completion, owner immutability, bot persistence,
+relayer authorization, and version constancy. Medusa harness at `test/fuzz/AxonVaultFuzzHarness.sol`
+tests 10 additional properties (requires Medusa >= 1.5.0; v1.3.0 has a `via_ir` bug).
 
 ---
 
