@@ -7,6 +7,7 @@ broadcast/
 crytic-export/
 slither_results.json
 report.md
+.medusa-artifact-hash
 
 # Environment
 .env
