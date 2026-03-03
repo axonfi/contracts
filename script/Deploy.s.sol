@@ -64,6 +64,9 @@ contract Deploy is Script {
         } else if (block.chainid == 42161) {
             // Arbitrum One
             registry.addSwapRouter(0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45);
+        } else if (block.chainid == 421614) {
+            // Arbitrum Sepolia
+            registry.addSwapRouter(0x101F443B4d1b059569D643917553c771E1b9663E);
         }
 
         // ── Set oracle config for TWAP price lookups ────────────────────────────
@@ -87,6 +90,13 @@ contract Deploy is Script {
             registry.setOracleConfig(
                 0x1F98431c8aD98523631AE4a59f267346ea31F984, // Uniswap V3 Factory
                 0xaf88d065e77c8cC2239327C5EDb3A432268e5831, // USDC
+                0x82aF49447D8a07e3bd95BD0d56f35241523fBab1 // WETH
+            );
+        } else if (block.chainid == 421614) {
+            // Arbitrum Sepolia
+            registry.setOracleConfig(
+                0x248AB79Bbb9bC29bB72f7Cd42F17e054Fc40188e, // Uniswap V3 Factory
+                0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d, // USDC
                 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1 // WETH
             );
         } else if (block.chainid == 10) {

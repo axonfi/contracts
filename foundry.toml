@@ -14,8 +14,10 @@ remappings = ["@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"]
 runs = 1000
 
 [rpc_endpoints]
-base_sepolia   = "https://sepolia.base.org"
-base           = "${BASE_RPC_URL}"
+base_sepolia      = "https://sepolia.base.org"
+arbitrum_sepolia  = "${ARBITRUM_SEPOLIA_RPC_URL}"
+base              = "${BASE_RPC_URL}"
+arbitrum_one      = "${ARBITRUM_ONE_RPC_URL}"
 
 [fmt]
 line_length = 120

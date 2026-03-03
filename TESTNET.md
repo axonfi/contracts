@@ -37,6 +37,17 @@
 | WETH                    | `0x4200000000000000000000000000000000000006` |
 | Uniswap V3 SwapRouter02 | `0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4` |
 
+## Deployed Addresses (Arbitrum Sepolia 421614)
+
+| Contract                | Address                                      |
+| ----------------------- | -------------------------------------------- |
+| AxonRegistry            | `0x78EFd5d9eFcF6d97D0c90440BE3DEa350b8fa9BC` |
+| AxonVaultFactory        | `0xBc35Cab48b4cbe5C8425A455df32fD78620A43Cb` |
+| USDC                    | `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` |
+| WETH                    | `0x82aF49447D8a07e3bd95BD0d56f35241523fBab1` |
+| Uniswap V3 SwapRouter   | `0x101F443B4d1b059569D643917553c771E1b9663E` |
+| Uniswap V3 Factory      | `0x248AB79Bbb9bC29bB72f7Cd42F17e054Fc40188e` |
+
 ## Redeployment Checklist
 
 When you redeploy AxonRegistry, AxonVaultFactory, or create a new vault, update **all** of the following:
