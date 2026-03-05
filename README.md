@@ -222,3 +222,13 @@ See [docs/deployment-mainnet.md] for the full mainnet checklist (audit sign-off,
 | Arbitrum One     | —               | —                |
 
 _Addresses will be filled in after each deployment._
+
+## Links
+
+- [Website](https://axonfi.xyz)
+- [Dashboard](https://app.axonfi.xyz)
+- [Documentation](https://axonfi.xyz/llms.txt)
+- [npm — @axonfi/sdk](https://www.npmjs.com/package/@axonfi/sdk) (TypeScript SDK)
+- [PyPI — axonfi](https://pypi.org/project/axonfi/) (Python SDK)
+- [Examples](https://github.com/axonfi/examples)
+- [Twitter/X — @axonfixyz](https://x.com/axonfixyz)
