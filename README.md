@@ -214,14 +214,12 @@ See [docs/deployment-mainnet.md] for the full mainnet checklist (audit sign-off,
 
 ## Deployed Addresses
 
-| Network          | RelayerRegistry | AxonVaultFactory |
-| ---------------- | --------------- | ---------------- |
-| Base Sepolia     | —               | —                |
-| Base Mainnet     | —               | —                |
-| Arbitrum Sepolia | —               | —                |
-| Arbitrum One     | —               | —                |
-
-_Addresses will be filled in after each deployment._
+| Network          | AxonRegistry                                   | AxonVaultFactory                                 |
+| ---------------- | ---------------------------------------------- | ------------------------------------------------ |
+| Base Sepolia     | `0xEF9280ee20DBc78c73e71874bbC234d4023eaD14`   | `0x5Fb75454D191e110776B058b2a10989A9E446FF1`     |
+| Arbitrum Sepolia | `0x78EFd5d9eFcF6d97D0c90440BE3DEa350b8fa9BC`   | `0xBc35Cab48b4cbe5C8425A455df32fD78620A43Cb`     |
+| Base Mainnet     | —                                              | —                                                |
+| Arbitrum One     | —                                              | —                                                |
 
 ## Links
 
