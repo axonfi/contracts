@@ -10,15 +10,18 @@
 
 | Contract                | Address                                      |
 | ----------------------- | -------------------------------------------- |
-| AxonRegistry (v3+)      | `0xEF9280ee20DBc78c73e71874bbC234d4023eaD14` |
-| AxonVaultFactory (v5)   | `0x5Fb75454D191e110776B058b2a10989A9E446FF1` |
-| Test Vault (v5)         | `0x0Bc5DF90FA4FE46179E2fEd508e4987863059932` |
+| AxonRegistry (v1)       | `0x2db5bd22385727091d0127b39e0d0f2de257d4ac` |
+| AxonVaultFactory (v1)   | `0xd95d4e98b0fb75071c1264d4cbb403e056aa9815` |
+| Test Vault (v1)         | `0xb8e354df5d312e5bf1862cb1deef6d5be9afd1a1` |
 
 <details>
 <summary>Old deployments (archived)</summary>
 
 | Contract                | Address                                      |
 | ----------------------- | -------------------------------------------- |
+| Old Registry (v3+/v5)   | `0xEF9280ee20DBc78c73e71874bbC234d4023eaD14` |
+| Old Factory (v5)        | `0x5Fb75454D191e110776B058b2a10989A9E446FF1` |
+| Old Vault (v5)          | `0x0Bc5DF90FA4FE46179E2fEd508e4987863059932` |
 | Old Factory (v4)        | `0x7fCd3b48D6DF01e8E309d8e6097Ad77C3e84bf72` |
 | Old Test Vault (v4)     | `0x16f089d32866b36a1308c6ac77113caa4b890a98` |
 | Old Factory (v3)        | `0x73b971B40D65520514A64Da8cFbC656Ce276d1DA` |
@@ -26,8 +29,8 @@
 | Old Registry (v2)       | `0x21340E5066d1C51FA58CDbCaE492407f2a109e64` |
 | Old Factory (v2)        | `0xDbd90785E57fd433ee4dAc65318C4083624649db` |
 | Old Vault (v2)          | `0x736fd8450a2ac4449684b71fc24724804b82aaef` |
-| Old Registry (v1)       | `0x2ccd97040c1f4D97ac90e8bA8FEe9D0DCf4e3dc3` |
-| Old Factory (v1)        | `0x55D71180ed38EBc0E2959840589BF4506A05641a` |
+| Old Registry (v1-pre)   | `0x2ccd97040c1f4D97ac90e8bA8FEe9D0DCf4e3dc3` |
+| Old Factory (v1-pre)    | `0x55D71180ed38EBc0E2959840589BF4506A05641a` |
 | Old Factory (v2-pre)    | `0xCC75dC0F9617AAF4179EDD9F7d27B67aA4DC60E6` |
 | Old Vault (v2-pre)      | `0xdC3b0a3246e63983fAC310D2c8aE4991Fe69cA08` |
 
@@ -41,8 +44,8 @@
 
 | Contract                | Address                                      |
 | ----------------------- | -------------------------------------------- |
-| AxonRegistry            | `0x78EFd5d9eFcF6d97D0c90440BE3DEa350b8fa9BC` |
-| AxonVaultFactory        | `0xBc35Cab48b4cbe5C8425A455df32fD78620A43Cb` |
+| AxonRegistry (v1)       | `0x5cc1b940393dbaaded00300e2a27b512384f3012` |
+| AxonVaultFactory (v1)   | `0xf44e0cf75a608b9ce2684faa257b64ed55e042d6` |
 | USDC                    | `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` |
 | WETH                    | `0x82aF49447D8a07e3bd95BD0d56f35241523fBab1` |
 | Uniswap V3 SwapRouter   | `0x101F443B4d1b059569D643917553c771E1b9663E` |
