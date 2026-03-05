@@ -102,12 +102,8 @@ library TwapOracle {
                 int24 arithmeticMeanTick = _computeMeanTick(tickCumulatives);
                 return _getQuoteFromTick(arithmeticMeanTick, amount, tokenA, tokenB);
             } catch {
-                // Observations not available — try slot0 as fallback (less manipulation-resistant)
-                try IUniswapV3Pool(pool).slot0() returns (uint160, int24 tick, uint16, uint16, uint16, uint8, bool) {
-                    return _getQuoteFromTick(tick, amount, tokenA, tokenB);
-                } catch {
-                    continue;
-                }
+                // Observations not available — skip pool rather than use manipulable spot price
+                continue;
             }
         }
         return 0;
@@ -157,16 +153,19 @@ library TwapOracle {
         // For better precision with large amounts, split into two multiplications.
 
         uint160 sqrtPriceX96 = _getSqrtRatioAtTick(tick);
-        uint256 priceX192 = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
 
+        // Use two _mulDiv calls to avoid uint256 overflow when squaring sqrtPriceX96.
+        // Direct multiplication (sqrtPriceX96 * sqrtPriceX96) overflows for ticks above ~443636.
         if (tokenA == token0) {
             // tokenA is token0 → price = token1PerToken0 → multiply
-            // result = amount * price / 2^192
-            return _mulDiv(amount, priceX192, 1 << 192);
+            // result = amount * sqrtP / 2^96 * sqrtP / 2^96
+            uint256 step1 = _mulDiv(amount, uint256(sqrtPriceX96), 1 << 96);
+            return _mulDiv(step1, uint256(sqrtPriceX96), 1 << 96);
         } else {
             // tokenA is token1 → we need token0PerToken1 → divide
-            // result = amount * 2^192 / price
-            return _mulDiv(amount, 1 << 192, priceX192);
+            // result = amount * 2^96 / sqrtP * 2^96 / sqrtP
+            uint256 step1 = _mulDiv(amount, 1 << 96, uint256(sqrtPriceX96));
+            return _mulDiv(step1, 1 << 96, uint256(sqrtPriceX96));
         }
     }
 

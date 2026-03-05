@@ -170,8 +170,8 @@ contract AxonVaultTest is Test {
     // Deployment
     // =========================================================================
 
-    function test_version_is_5() public view {
-        assertEq(vault.VERSION(), 5);
+    function test_version_is_1() public view {
+        assertEq(vault.VERSION(), 1);
     }
 
     function test_axonRegistry_is_immutable() public view {

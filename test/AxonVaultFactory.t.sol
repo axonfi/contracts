@@ -64,15 +64,15 @@ contract AxonVaultFactoryTest is Test {
 
         // We don't know the vault address upfront, so check non-indexed fields
         vm.expectEmit(true, false, false, true);
-        emit AxonVaultFactory.VaultDeployed(alice, address(0), 5, address(registry));
+        emit AxonVaultFactory.VaultDeployed(alice, address(0), 1, address(registry));
 
         factory.deployVault();
     }
 
-    function test_deployVault_version_is_5() public {
+    function test_deployVault_version_is_1() public {
         vm.prank(alice);
         address vault = factory.deployVault();
-        assertEq(AxonVault(payable(vault)).VERSION(), 5);
+        assertEq(AxonVault(payable(vault)).VERSION(), 1);
     }
 
     // =========================================================================

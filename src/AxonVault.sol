@@ -36,7 +36,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     // Constants
     // =========================================================================
 
-    uint16 public constant VERSION = 5;
+    uint16 public constant VERSION = 1;
     uint8 public constant MAX_SPENDING_LIMITS = 5;
     address public constant NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
@@ -317,7 +317,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
 
         if (byOperator) {
             _checkOperatorBotLimit();
-            _checkOperatorCeilings(params, false);
+            _checkOperatorCeilings(bot, params, false);
         }
 
         BotConfig storage config = _bots[bot];
@@ -362,7 +362,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         bool byOperator = (msg.sender == operator && operator != address(0));
 
         if (byOperator) {
-            _checkOperatorCeilings(params, true);
+            _checkOperatorCeilings(bot, params, true);
             // Operator cannot disable requireAiVerification once enabled
             if (_bots[bot].requireAiVerification && !params.requireAiVerification) {
                 revert ExceedsOperatorCeiling();
@@ -906,12 +906,18 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         if (operatorBotCount >= operatorCeilings.maxOperatorBots) revert OperatorBotLimitReached();
     }
 
-    function _checkOperatorCeilings(BotConfigParams calldata params, bool isUpdate) internal view {
+    function _checkOperatorCeilings(address bot, BotConfigParams calldata params, bool isUpdate) internal view {
         OperatorCeilings memory c = operatorCeilings;
 
-        // Per-tx ceiling: if set, operator must provide a non-zero cap within the ceiling
+        // Per-tx ceiling: if set, operator must provide a non-zero cap within the ceiling.
+        // If unset (0), operator cannot change maxPerTxAmount — must keep the existing value on update.
         if (c.maxPerTxAmount > 0) {
             if (params.maxPerTxAmount == 0 || params.maxPerTxAmount > c.maxPerTxAmount) {
+                revert ExceedsOperatorCeiling();
+            }
+        } else if (isUpdate) {
+            // No ceiling configured — operator must preserve the current value (cannot loosen)
+            if (params.maxPerTxAmount != _bots[bot].maxPerTxAmount) {
                 revert ExceedsOperatorCeiling();
             }
         }
