@@ -46,6 +46,7 @@
 | ----------------------- | -------------------------------------------- |
 | AxonRegistry (v1)       | `0x5cc1b940393dbaaded00300e2a27b512384f3012` |
 | AxonVaultFactory (v1)   | `0xf44e0cf75a608b9ce2684faa257b64ed55e042d6` |
+| Test Vault (v1)         | `0xc0bc41d40ac5fa13928275c15c607ac90d6c10d5` |
 | USDC                    | `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` |
 | WETH                    | `0x82aF49447D8a07e3bd95BD0d56f35241523fBab1` |
 | Uniswap V3 SwapRouter   | `0x101F443B4d1b059569D643917553c771E1b9663E` |
