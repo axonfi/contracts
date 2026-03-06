@@ -84,7 +84,7 @@ contract AxonVaultEchidna {
             requireAiVerification: false
         }));
 
-        vault.addProtocol(address(mockProtocol));
+        vault.approveProtocol(address(mockProtocol));
 
         // Pre-sign payment intents with varying amounts
         for (uint256 i = 0; i < PRESIGNED_COUNT; i++) {

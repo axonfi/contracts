@@ -63,7 +63,7 @@ contract AxonVaultFuzzHarness {
             requireAiVerification: false
         }));
 
-        vault.addProtocol(address(mockProtocol));
+        vault.approveProtocol(address(mockProtocol));
     }
 
     // =====================================================================

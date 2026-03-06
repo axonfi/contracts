@@ -7,4 +7,5 @@ interface IAxonRegistry {
     function uniswapV3Factory() external view returns (address);
     function usdcAddress() external view returns (address);
     function wethAddress() external view returns (address);
+    function isDefaultToken(address token) external view returns (bool);
 }

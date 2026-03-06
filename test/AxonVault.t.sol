@@ -122,7 +122,7 @@ contract AxonVaultTest is Test {
 
         // Approve mock protocol for executeProtocol tests
         vm.prank(vaultOwner);
-        vault.addProtocol(address(mockProtocol));
+        vault.approveProtocol(address(mockProtocol));
     }
 
     // =========================================================================
@@ -1529,69 +1529,69 @@ contract AxonVaultTest is Test {
     // Protocol whitelist management
     // =========================================================================
 
-    function test_addProtocol_happy_path() public view {
-        assertTrue(vault.isProtocolApproved(address(mockProtocol)));
+    function test_approveProtocol_happy_path() public view {
+        assertTrue(vault.isContractApproved(address(mockProtocol)));
         assertEq(vault.approvedProtocolCount(), 1);
     }
 
-    function test_addProtocol_emits_event() public {
+    function test_approveProtocol_emits_event() public {
         address newProtocol = makeAddr("newProtocol");
         vm.expectEmit(true, false, false, false);
-        emit AxonVault.ProtocolAdded(newProtocol);
+        emit AxonVault.ProtocolApproved(newProtocol);
 
         vm.prank(vaultOwner);
-        vault.addProtocol(newProtocol);
+        vault.approveProtocol(newProtocol);
     }
 
-    function test_addProtocol_reverts_zero_address() public {
+    function test_approveProtocol_reverts_zero_address() public {
         vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.ZeroAddress.selector);
-        vault.addProtocol(address(0));
+        vault.approveProtocol(address(0));
     }
 
-    function test_addProtocol_reverts_already_approved() public {
+    function test_approveProtocol_reverts_already_approved() public {
         vm.prank(vaultOwner);
         vm.expectRevert(AxonVault.AlreadyApprovedProtocol.selector);
-        vault.addProtocol(address(mockProtocol));
+        vault.approveProtocol(address(mockProtocol));
     }
 
-    function test_addProtocol_reverts_non_owner() public {
+    function test_approveProtocol_reverts_non_owner() public {
         vm.prank(operator);
         vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", operator));
-        vault.addProtocol(makeAddr("someProtocol"));
+        vault.approveProtocol(makeAddr("someProtocol"));
     }
 
-    function test_removeProtocol_by_owner() public {
+    function test_revokeProtocol_by_owner() public {
         vm.prank(vaultOwner);
-        vault.removeProtocol(address(mockProtocol));
-        assertFalse(vault.isProtocolApproved(address(mockProtocol)));
+        vault.revokeProtocol(address(mockProtocol));
+        assertFalse(vault.isContractApproved(address(mockProtocol)));
         assertEq(vault.approvedProtocolCount(), 0);
     }
 
-    function test_removeProtocol_by_operator() public {
+    function test_revokeProtocol_by_operator() public {
         vm.prank(operator);
-        vault.removeProtocol(address(mockProtocol));
-        assertFalse(vault.isProtocolApproved(address(mockProtocol)));
+        vault.revokeProtocol(address(mockProtocol));
+        assertFalse(vault.isContractApproved(address(mockProtocol)));
     }
 
-    function test_removeProtocol_emits_event() public {
+    function test_revokeProtocol_emits_event() public {
         vm.expectEmit(true, false, false, false);
-        emit AxonVault.ProtocolRemoved(address(mockProtocol));
+        emit AxonVault.ProtocolRevoked(address(mockProtocol));
 
         vm.prank(vaultOwner);
-        vault.removeProtocol(address(mockProtocol));
+        vault.revokeProtocol(address(mockProtocol));
     }
 
-    function test_removeProtocol_reverts_not_in_list() public {
+    function test_revokeProtocol_reverts_not_in_list() public {
         vm.prank(vaultOwner);
-        vm.expectRevert(AxonVault.ProtocolNotInList.selector);
-        vault.removeProtocol(makeAddr("notApproved"));
+        vm.expectRevert(AxonVault.ProtocolNotApproved.selector);
+        vault.revokeProtocol(makeAddr("notApproved"));
     }
 
-    function test_removeProtocol_reverts_attacker() public {
+    function test_revokeProtocol_reverts_attacker() public {
         vm.prank(attacker);
         vm.expectRevert(AxonVault.NotAuthorized.selector);
-        vault.removeProtocol(address(mockProtocol));
+        vault.revokeProtocol(address(mockProtocol));
     }
 
     // =========================================================================
@@ -1767,7 +1767,7 @@ contract AxonVaultTest is Test {
         bytes memory sig = _signExecute(BOT_KEY, intent);
 
         vm.prank(relayer);
-        vm.expectRevert(AxonVault.ProtocolNotApproved.selector);
+        vm.expectRevert(AxonVault.ContractNotApproved.selector);
         vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
     }
 
@@ -1938,7 +1938,7 @@ contract AxonVaultTest is Test {
 
     function test_executeProtocol_removed_protocol_blocks_execution() public {
         vm.prank(vaultOwner);
-        vault.removeProtocol(address(mockProtocol));
+        vault.revokeProtocol(address(mockProtocol));
 
         bytes memory callData = abi.encodeCall(MockProtocol.closeTrade, (1));
         AxonVault.ExecuteIntent memory intent = AxonVault.ExecuteIntent({
@@ -1953,7 +1953,7 @@ contract AxonVaultTest is Test {
         bytes memory sig = _signExecute(BOT_KEY, intent);
 
         vm.prank(relayer);
-        vm.expectRevert(AxonVault.ProtocolNotApproved.selector);
+        vm.expectRevert(AxonVault.ContractNotApproved.selector);
         vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
     }
 
@@ -2838,5 +2838,107 @@ contract AxonVaultTest is Test {
         vm.prank(operator);
         vm.expectRevert();
         vault.setOperatorCeilings(c);
+    }
+
+    // =========================================================================
+    // executeProtocol — registry default tokens
+    // =========================================================================
+
+    /// @dev A default token in the registry can be used as protocol without vault-level approveProtocol.
+    function test_executeProtocol_allows_registry_default_token() public {
+        // Deploy a fresh token that is NOT in the vault's approvedProtocols
+        MockERC20 freshToken = new MockERC20("Fresh", "FRESH", 6);
+
+        // Add it as a default token on the registry (registry owner = address(this))
+        registry.approveDefaultToken(address(freshToken));
+
+        // Verify it's NOT in the vault's local approved list
+        assertFalse(vault.isContractApproved(address(freshToken)));
+
+        // Build an execute intent that calls freshToken (e.g. approve() pattern)
+        bytes memory callData = abi.encodeWithSignature("approve(address,uint256)", address(mockProtocol), 1000);
+        AxonVault.ExecuteIntent memory intent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(freshToken),
+            calldataHash: keccak256(callData),
+            token: address(0),
+            amount: 0,
+            deadline: _deadline(),
+            ref: bytes32("default-token-test")
+        });
+        bytes memory sig = _signExecute(BOT_KEY, intent);
+
+        // Should succeed — registry default token is accepted
+        vm.prank(relayer);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
+    }
+
+    /// @dev After removing a default token from registry, executeProtocol reverts.
+    function test_executeProtocol_reverts_after_registry_default_token_removed() public {
+        MockERC20 freshToken = new MockERC20("Fresh", "FRESH", 6);
+        registry.approveDefaultToken(address(freshToken));
+
+        // Remove it
+        registry.revokeDefaultToken(address(freshToken));
+
+        bytes memory callData = abi.encodeWithSignature("approve(address,uint256)", address(mockProtocol), 1000);
+        AxonVault.ExecuteIntent memory intent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(freshToken),
+            calldataHash: keccak256(callData),
+            token: address(0),
+            amount: 0,
+            deadline: _deadline(),
+            ref: bytes32("removed-token")
+        });
+        bytes memory sig = _signExecute(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.ContractNotApproved.selector);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
+    }
+
+    /// @dev Vault-level approveProtocol still works independently of registry defaults.
+    function test_executeProtocol_local_protocol_unaffected_by_registry() public {
+        // mockProtocol is added via vault's approveProtocol in setUp — not a registry default
+        assertFalse(registry.isDefaultToken(address(mockProtocol)));
+        assertTrue(vault.isContractApproved(address(mockProtocol)));
+
+        // Should still work via local approval
+        bytes memory callData = abi.encodeCall(MockProtocol.closeTrade, (1));
+        AxonVault.ExecuteIntent memory intent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(mockProtocol),
+            calldataHash: keccak256(callData),
+            token: address(0),
+            amount: 0,
+            deadline: _deadline(),
+            ref: bytes32("local-protocol")
+        });
+        bytes memory sig = _signExecute(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
+    }
+
+    /// @dev A protocol that is neither locally approved nor a registry default is rejected.
+    function test_executeProtocol_reverts_not_local_nor_default() public {
+        address randomAddr = makeAddr("randomProtocol");
+
+        bytes memory callData = hex"deadbeef";
+        AxonVault.ExecuteIntent memory intent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: randomAddr,
+            calldataHash: keccak256(callData),
+            token: address(0),
+            amount: 0,
+            deadline: _deadline(),
+            ref: bytes32("ref")
+        });
+        bytes memory sig = _signExecute(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.ContractNotApproved.selector);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
     }
 }

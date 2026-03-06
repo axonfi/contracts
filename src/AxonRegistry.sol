@@ -14,6 +14,13 @@ contract AxonRegistry is IAxonRegistry, Ownable2Step {
     mapping(address => bool) private _authorizedRelayers;
     mapping(address => bool) private _approvedSwapRouters;
 
+    // Default tokens — globally approved as protocols on all vaults.
+    // Enables the two-step approval pattern (approve token → call DeFi protocol)
+    // without the vault owner having to manually add common tokens.
+    // O(1) lookup on the hot path (checked every executeProtocol call).
+    // Full list reconstructable off-chain via DefaultTokenApproved/Revoked events.
+    mapping(address => bool) private _isDefaultToken;
+
     // Oracle config — used by vaults for on-chain TWAP price lookups
     address private _uniswapV3Factory;
     address private _usdcAddress;
@@ -23,6 +30,8 @@ contract AxonRegistry is IAxonRegistry, Ownable2Step {
     event RelayerRemoved(address indexed relayer);
     event SwapRouterAdded(address indexed router);
     event SwapRouterRemoved(address indexed router);
+    event DefaultTokenApproved(address indexed token);
+    event DefaultTokenRevoked(address indexed token);
     event OracleConfigUpdated(address uniswapV3Factory, address usdc, address weth);
 
     error ZeroAddress();
@@ -79,6 +88,30 @@ contract AxonRegistry is IAxonRegistry, Ownable2Step {
     /// @notice Returns true if the address is an approved swap router.
     function isApprovedSwapRouter(address router) external view override returns (bool) {
         return _approvedSwapRouters[router];
+    }
+
+    // =========================================================================
+    // Default token management
+    // =========================================================================
+
+    /// @notice Approve a token globally. Immediately usable in executeProtocol on all vaults.
+    function approveDefaultToken(address token) external onlyOwner {
+        if (token == address(0)) revert ZeroAddress();
+        if (_isDefaultToken[token]) revert AlreadyApproved();
+        _isDefaultToken[token] = true;
+        emit DefaultTokenApproved(token);
+    }
+
+    /// @notice Revoke a default token. Immediately blocked on all vaults.
+    function revokeDefaultToken(address token) external onlyOwner {
+        if (!_isDefaultToken[token]) revert NotApproved();
+        _isDefaultToken[token] = false;
+        emit DefaultTokenRevoked(token);
+    }
+
+    /// @notice Returns true if the token is a default token. Called by vaults on executeProtocol.
+    function isDefaultToken(address token) external view override returns (bool) {
+        return _isDefaultToken[token];
     }
 
     // =========================================================================

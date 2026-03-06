@@ -276,4 +276,146 @@ contract AxonRegistryTest is Test {
         vm.expectRevert();
         registry.addRelayer(relayerA);
     }
+
+    // =========================================================================
+    // approveDefaultToken
+    // =========================================================================
+
+    address tokenA = makeAddr("tokenA");
+    address tokenB = makeAddr("tokenB");
+    address tokenC = makeAddr("tokenC");
+
+    function test_approveDefaultToken_marks_as_default() public {
+        vm.prank(owner);
+        registry.approveDefaultToken(tokenA);
+        assertTrue(registry.isDefaultToken(tokenA));
+    }
+
+    function test_approveDefaultToken_emits_event() public {
+        vm.expectEmit(true, false, false, false);
+        emit AxonRegistry.DefaultTokenApproved(tokenA);
+
+        vm.prank(owner);
+        registry.approveDefaultToken(tokenA);
+    }
+
+    function test_approveDefaultToken_multiple() public {
+        vm.startPrank(owner);
+        registry.approveDefaultToken(tokenA);
+        registry.approveDefaultToken(tokenB);
+        registry.approveDefaultToken(tokenC);
+        vm.stopPrank();
+
+        assertTrue(registry.isDefaultToken(tokenA));
+        assertTrue(registry.isDefaultToken(tokenB));
+        assertTrue(registry.isDefaultToken(tokenC));
+    }
+
+    function test_approveDefaultToken_reverts_zero_address() public {
+        vm.prank(owner);
+        vm.expectRevert(AxonRegistry.ZeroAddress.selector);
+        registry.approveDefaultToken(address(0));
+    }
+
+    function test_approveDefaultToken_reverts_duplicate() public {
+        vm.startPrank(owner);
+        registry.approveDefaultToken(tokenA);
+        vm.expectRevert(AxonRegistry.AlreadyApproved.selector);
+        registry.approveDefaultToken(tokenA);
+        vm.stopPrank();
+    }
+
+    function test_approveDefaultToken_reverts_non_owner() public {
+        vm.prank(attacker);
+        vm.expectRevert();
+        registry.approveDefaultToken(tokenA);
+    }
+
+    // =========================================================================
+    // revokeDefaultToken
+    // =========================================================================
+
+    function test_revokeDefaultToken_clears_mapping() public {
+        vm.startPrank(owner);
+        registry.approveDefaultToken(tokenA);
+        registry.revokeDefaultToken(tokenA);
+        vm.stopPrank();
+
+        assertFalse(registry.isDefaultToken(tokenA));
+    }
+
+    function test_revokeDefaultToken_emits_event() public {
+        vm.prank(owner);
+        registry.approveDefaultToken(tokenA);
+
+        vm.expectEmit(true, false, false, false);
+        emit AxonRegistry.DefaultTokenRevoked(tokenA);
+
+        vm.prank(owner);
+        registry.revokeDefaultToken(tokenA);
+    }
+
+    function test_revokeDefaultToken_does_not_affect_other_tokens() public {
+        vm.startPrank(owner);
+        registry.approveDefaultToken(tokenA);
+        registry.approveDefaultToken(tokenB);
+        registry.revokeDefaultToken(tokenA);
+        vm.stopPrank();
+
+        assertFalse(registry.isDefaultToken(tokenA));
+        assertTrue(registry.isDefaultToken(tokenB));
+    }
+
+    function test_revokeDefaultToken_allows_re_add() public {
+        vm.startPrank(owner);
+        registry.approveDefaultToken(tokenA);
+        registry.revokeDefaultToken(tokenA);
+        registry.approveDefaultToken(tokenA);
+        vm.stopPrank();
+
+        assertTrue(registry.isDefaultToken(tokenA));
+    }
+
+    function test_revokeDefaultToken_reverts_not_in_list() public {
+        vm.prank(owner);
+        vm.expectRevert(AxonRegistry.NotApproved.selector);
+        registry.revokeDefaultToken(tokenA);
+    }
+
+    function test_revokeDefaultToken_reverts_non_owner() public {
+        vm.prank(owner);
+        registry.approveDefaultToken(tokenA);
+
+        vm.prank(attacker);
+        vm.expectRevert();
+        registry.revokeDefaultToken(tokenA);
+    }
+
+    // =========================================================================
+    // isDefaultToken — false at deploy
+    // =========================================================================
+
+    function test_no_default_tokens_at_deploy() public view {
+        assertFalse(registry.isDefaultToken(tokenA));
+    }
+
+    // =========================================================================
+    // Default tokens are independent from relayers/routers
+    // =========================================================================
+
+    function test_default_tokens_independent_from_relayers_and_routers() public {
+        vm.startPrank(owner);
+        registry.approveDefaultToken(tokenA);
+        registry.addRelayer(relayerA);
+        registry.addSwapRouter(routerA);
+        vm.stopPrank();
+
+        // Token is not a relayer or router
+        assertFalse(registry.isAuthorized(tokenA));
+        assertFalse(registry.isApprovedSwapRouter(tokenA));
+
+        // Relayer/router is not a default token
+        assertFalse(registry.isDefaultToken(relayerA));
+        assertFalse(registry.isDefaultToken(routerA));
+    }
 }
