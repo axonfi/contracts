@@ -9,6 +9,8 @@ import "./interfaces/IAxonRegistry.sol";
 ///         All AxonVaults check against this registry before executing payments or swaps.
 ///         One registry is deployed per chain. Vaults store the registry address as immutable.
 contract AxonRegistry is IAxonRegistry, Ownable2Step {
+    uint256 public constant VERSION = 1;
+
     mapping(address => bool) private _authorizedRelayers;
     mapping(address => bool) private _approvedSwapRouters;
 
