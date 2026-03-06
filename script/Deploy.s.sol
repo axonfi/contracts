@@ -118,7 +118,7 @@ contract Deploy is Script {
         // ── Approve default tokens ──────────────────────────────────────────
         // Keep in sync with @axonfi/sdk DEFAULT_APPROVED_TOKENS in packages/sdk-ts/src/tokens.ts
         if (block.chainid == 8453) {
-            // Base mainnet: USDC, USDT, DAI, WETH, WBTC, cbBTC, wstETH
+            // Base mainnet — keep in sync with @axonfi/sdk DEFAULT_APPROVED_TOKENS
             registry.approveDefaultToken(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913); // USDC
             registry.approveDefaultToken(0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2); // USDT
             registry.approveDefaultToken(0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb); // DAI
@@ -126,14 +126,17 @@ contract Deploy is Script {
             registry.approveDefaultToken(0x0555E30da8f98308EdB960aa94C0Db47230d2B9c); // WBTC
             registry.approveDefaultToken(0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf); // cbBTC
             registry.approveDefaultToken(0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452); // wstETH
+            registry.approveDefaultToken(0x04C0599Ae5A44757c0af6F9eC3b93da8976c150A); // weETH
+            registry.approveDefaultToken(0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22); // cbETH
+            registry.approveDefaultToken(0xB6fe221Fe9EeF5aBa221c348bA20A1Bf5e73624c); // rETH
         } else if (block.chainid == 84532) {
-            // Base Sepolia: USDC, USDT, DAI, WETH
+            // Base Sepolia — only tokens with testnet addresses
             registry.approveDefaultToken(0x036CbD53842c5426634e7929541eC2318f3dCF7e); // USDC
             registry.approveDefaultToken(0x323e78f944A9a1FcF3a10efcC5319DBb0bB6e673); // USDT
             registry.approveDefaultToken(0x819FfeCD4e64f193e959944Bcd57eeDC7755e17a); // DAI
             registry.approveDefaultToken(0x4200000000000000000000000000000000000006); // WETH
         } else if (block.chainid == 42161) {
-            // Arbitrum One: USDC, USDT, DAI, WETH, WBTC, cbBTC, wstETH
+            // Arbitrum One — keep in sync with @axonfi/sdk DEFAULT_APPROVED_TOKENS
             registry.approveDefaultToken(0xaf88d065e77c8cC2239327C5EDb3A432268e5831); // USDC
             registry.approveDefaultToken(0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9); // USDT
             registry.approveDefaultToken(0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1); // DAI
@@ -141,8 +144,11 @@ contract Deploy is Script {
             registry.approveDefaultToken(0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f); // WBTC
             registry.approveDefaultToken(0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf); // cbBTC
             registry.approveDefaultToken(0x5979D7b546E38E414F7E9822514be443A4800529); // wstETH
+            registry.approveDefaultToken(0x35751007a407ca6FEFfE80b3cB397736D2cf4dbe); // weETH
+            registry.approveDefaultToken(0x1DEBd73E752bEaF79865Fd6446b0c970EaE7732f); // cbETH
+            registry.approveDefaultToken(0xEC70Dcb4A1EFa46b8F2D97C310C9c4790ba5ffA8); // rETH
         } else if (block.chainid == 421614) {
-            // Arbitrum Sepolia: USDC, WETH
+            // Arbitrum Sepolia — only tokens with testnet addresses
             registry.approveDefaultToken(0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d); // USDC
             registry.approveDefaultToken(0x980B62Da83eFf3D4576C647993b0c1D7faf17c73); // WETH
         }
