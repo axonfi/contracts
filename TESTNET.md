@@ -10,15 +10,18 @@
 
 | Contract                | Address                                      |
 | ----------------------- | -------------------------------------------- |
-| AxonRegistry (v1)       | `0x2db5bd22385727091d0127b39e0d0f2de257d4ac` |
-| AxonVaultFactory (v1)   | `0xd95d4e98b0fb75071c1264d4cbb403e056aa9815` |
-| Test Vault (v1)         | `0xb8e354df5d312e5bf1862cb1deef6d5be9afd1a1` |
+| AxonRegistry (v2)       | `0x16e63608b1F421055411Ec4BA90C3b9A1916AC49` |
+| AxonVaultFactory (v2)   | `0xf3A3cb0B2241942dae73F99d53E1B44C69F7B92f` |
+| Test Vault (v2)         | `0x77814535ed59964fce85f5a72699d614dde1441c` |
 
 <details>
 <summary>Old deployments (archived)</summary>
 
 | Contract                | Address                                      |
 | ----------------------- | -------------------------------------------- |
+| Old Registry (v1)       | `0x2db5bd22385727091d0127b39e0d0f2de257d4ac` |
+| Old Factory (v1)        | `0xd95d4e98b0fb75071c1264d4cbb403e056aa9815` |
+| Old Vault (v1)          | `0xb8e354df5d312e5bf1862cb1deef6d5be9afd1a1` |
 | Old Registry (v3+/v5)   | `0xEF9280ee20DBc78c73e71874bbC234d4023eaD14` |
 | Old Factory (v5)        | `0x5Fb75454D191e110776B058b2a10989A9E446FF1` |
 | Old Vault (v5)          | `0x0Bc5DF90FA4FE46179E2fEd508e4987863059932` |
@@ -44,9 +47,9 @@
 
 | Contract                | Address                                      |
 | ----------------------- | -------------------------------------------- |
-| AxonRegistry (v1)       | `0x5cc1b940393dbaaded00300e2a27b512384f3012` |
-| AxonVaultFactory (v1)   | `0xf44e0cf75a608b9ce2684faa257b64ed55e042d6` |
-| Test Vault (v1)         | `0xc0bc41d40ac5fa13928275c15c607ac90d6c10d5` |
+| AxonRegistry (v2)       | `0xa7e5ed7cfCF54aB61EAF39A481a3fd218d389BeC` |
+| AxonVaultFactory (v2)   | `0xac788c68bC879744Db3c250Bda293D1058664b11` |
+| Test Vault (v2)         | `0x723ff94280af1a5a2f924d00ee764724ee2e3182` |
 | USDC                    | `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` |
 | WETH                    | `0x82aF49447D8a07e3bd95BD0d56f35241523fBab1` |
 | Uniswap V3 SwapRouter   | `0x101F443B4d1b059569D643917553c771E1b9663E` |
