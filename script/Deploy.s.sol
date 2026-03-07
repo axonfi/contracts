@@ -49,6 +49,10 @@ contract Deploy is Script {
         // ── Deploy ────────────────────────────────────────────────────────────
         vm.startBroadcast(deployerKey);
 
+        // NOTE: For mainnet, deploy Registry + Factory via the deterministic deployer
+        // (0x4e59b44847b379578588920cA78FbF26c0B4956C) with a fixed salt so both contracts
+        // land at the same address on every chain. Vault clones are already deterministic
+        // via CREATE2 in the factory (same owner + nonce = same vault address).
         AxonRegistry registry = new AxonRegistry(owner);
         AxonVaultFactory factory = new AxonVaultFactory(address(registry), owner);
 
@@ -167,6 +171,7 @@ contract Deploy is Script {
         console2.log("registry.owner()         :", registry.owner());
         console2.log("factory.owner()          :", factory.owner());
         console2.log("factory.axonRegistry()   :", factory.axonRegistry());
+        console2.log("factory.implementation() :", factory.implementation());
         console2.log("factory.vaultCount()     :", factory.vaultCount());
     }
 }

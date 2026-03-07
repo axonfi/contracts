@@ -2,14 +2,22 @@
 pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
+import "@openzeppelin/contracts/proxy/Clones.sol";
 import "./AxonVault.sol";
 
 /// @title AxonVaultFactory
-/// @notice Deploys AxonVault instances for Owners.
+/// @notice Deploys AxonVault clones via EIP-1167 minimal proxies with CREATE2.
 ///         One factory is deployed per chain by Axon. All vaults on this chain
-///         share the same AxonRegistry (immutably set in each vault at deploy time).
-///         The factory stores a record of all deployed vaults for indexing and admin tooling.
+///         share the same AxonRegistry (set in each vault at initialization).
+///
+///         Vault addresses are deterministic: same owner + same nonce = same address
+///         across all chains (given the factory is at the same address).
 contract AxonVaultFactory is Ownable2Step {
+    using Clones for address;
+
+    /// @notice The vault implementation contract that all clones delegate to.
+    address public immutable implementation;
+
     /// @notice The AxonRegistry address used by all vaults deployed from this factory.
     address public immutable axonRegistry;
 
@@ -26,6 +34,9 @@ contract AxonVaultFactory is Ownable2Step {
     constructor(address _axonRegistry, address factoryOwner) Ownable(factoryOwner) {
         if (_axonRegistry == address(0)) revert ZeroAddress();
         axonRegistry = _axonRegistry;
+
+        // Deploy the vault implementation (never used directly, only as clone target)
+        implementation = address(new AxonVault());
     }
 
     /// @dev Disabled — renouncing ownership would brick the factory.
@@ -33,16 +44,27 @@ contract AxonVaultFactory is Ownable2Step {
         revert("AxonVaultFactory: renounce disabled");
     }
 
-    /// @notice Deploy a new AxonVault for the caller (the Owner).
-    ///         The vault is owned by msg.sender and uses this factory's AxonRegistry.
+    /// @notice Deploy a new AxonVault clone for the caller (the Owner).
+    ///         Uses CREATE2 with salt = keccak256(owner, nonce) for deterministic addresses.
     function deployVault() external returns (address vault) {
-        AxonVault newVault = new AxonVault(msg.sender, axonRegistry);
-        vault = address(newVault);
+        uint256 nonce = ownerVaults[msg.sender].length;
+        bytes32 salt = keccak256(abi.encodePacked(msg.sender, nonce));
+
+        vault = implementation.cloneDeterministic(salt);
+        AxonVault(payable(vault)).initialize(msg.sender, axonRegistry);
 
         allVaults.push(vault);
         ownerVaults[msg.sender].push(vault);
 
-        emit VaultDeployed(msg.sender, vault, newVault.VERSION(), axonRegistry);
+        emit VaultDeployed(msg.sender, vault, AxonVault(payable(vault)).VERSION(), axonRegistry);
+    }
+
+    /// @notice Predict the address of a vault before deployment.
+    /// @param owner The vault owner address.
+    /// @param nonce The owner's vault index (0 for first vault, 1 for second, etc.).
+    function predictVaultAddress(address owner, uint256 nonce) external view returns (address) {
+        bytes32 salt = keccak256(abi.encodePacked(owner, nonce));
+        return implementation.predictDeterministicAddress(salt);
     }
 
     /// @notice Total number of vaults deployed from this factory.

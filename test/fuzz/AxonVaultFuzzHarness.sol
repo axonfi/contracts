@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import "@openzeppelin/contracts/proxy/Clones.sol";
 import "../../src/AxonVault.sol";
 import "../../src/AxonRegistry.sol";
 import "../mocks/MockERC20.sol";
@@ -44,7 +45,10 @@ contract AxonVaultFuzzHarness {
         mockProtocol = new MockProtocol();
         registry.addSwapRouter(address(swapRouter));
 
-        vault = new AxonVault(address(this), address(registry));
+        AxonVault impl = new AxonVault();
+        address clone = Clones.clone(address(impl));
+        vault = AxonVault(payable(clone));
+        vault.initialize(address(this), address(registry));
         usdc.mint(address(vault), INITIAL_DEPOSIT);
 
         // Register bot with $10k per-tx cap

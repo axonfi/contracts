@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
+import "@openzeppelin/contracts/proxy/Clones.sol";
 import "../src/AxonVault.sol";
 import "../src/AxonRegistry.sol";
 import "./mocks/MockERC20.sol";
@@ -33,6 +34,7 @@ contract AxonVaultTest is Test {
     // =========================================================================
 
     AxonRegistry registry;
+    AxonVault vaultImpl;
     AxonVault vault;
     MockERC20 usdc;
     MockERC20 usdt;
@@ -87,8 +89,9 @@ contract AxonVaultTest is Test {
         address dummyV3Factory = makeAddr("uniV3Factory");
         registry.setOracleConfig(dummyV3Factory, address(usdc), dummyWeth);
 
-        // Deploy vault owned by vaultOwner
-        vault = new AxonVault(vaultOwner, address(registry));
+        // Deploy vault implementation + clone owned by vaultOwner
+        vaultImpl = new AxonVault();
+        vault = _deployVault(vaultOwner, address(registry));
 
         // Fund vault
         usdc.mint(address(vault), VAULT_DEPOSIT);
@@ -130,6 +133,14 @@ contract AxonVaultTest is Test {
     // =========================================================================
     // Helpers
     // =========================================================================
+
+    /// @dev Deploy a new vault clone from the implementation.
+    function _deployVault(address _owner, address _registry) internal returns (AxonVault) {
+        address clone = Clones.clone(address(vaultImpl));
+        AxonVault v = AxonVault(payable(clone));
+        v.initialize(_owner, _registry);
+        return v;
+    }
 
     function _deadline() internal view returns (uint256) {
         return block.timestamp + DEADLINE_DELTA;
@@ -185,8 +196,19 @@ contract AxonVaultTest is Test {
     }
 
     function test_deploy_reverts_zero_registry() public {
+        address clone = Clones.clone(address(vaultImpl));
         vm.expectRevert(AxonVault.ZeroAddress.selector);
-        new AxonVault(vaultOwner, address(0));
+        AxonVault(payable(clone)).initialize(vaultOwner, address(0));
+    }
+
+    function test_double_initialize_reverts() public {
+        vm.expectRevert();
+        vault.initialize(attacker, address(registry));
+    }
+
+    function test_implementation_cannot_be_initialized() public {
+        vm.expectRevert();
+        vaultImpl.initialize(attacker, address(registry));
     }
 
     // =========================================================================
@@ -391,7 +413,7 @@ contract AxonVaultTest is Test {
 
     function test_operator_addBot_reverts_when_maxOperatorBots_zero() public {
         // Deploy fresh vault with default ceilings (maxOperatorBots = 0)
-        AxonVault freshVault = new AxonVault(vaultOwner, address(registry));
+        AxonVault freshVault = _deployVault(vaultOwner, address(registry));
 
         vm.prank(vaultOwner);
         freshVault.setOperator(operator);
@@ -1020,7 +1042,7 @@ contract AxonVaultTest is Test {
     }
 
     function test_operatorMaxDrainPerDay_zero_when_no_bots_allowed() public {
-        AxonVault freshVault = new AxonVault(vaultOwner, address(registry));
+        AxonVault freshVault = _deployVault(vaultOwner, address(registry));
         // Default ceilings: maxOperatorBots = 0
         assertEq(freshVault.operatorMaxDrainPerDay(), 0);
     }
@@ -2867,7 +2889,7 @@ contract AxonVaultTest is Test {
     /// @dev Same bot address can be registered on different vaults (independent storage).
     function test_same_bot_on_different_vaults() public {
         // Deploy a second vault for the same vaultOwner
-        AxonVault vault2 = new AxonVault(vaultOwner, address(registry));
+        AxonVault vault2 = _deployVault(vaultOwner, address(registry));
 
         AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
             maxPerTxAmount: 500 * USDC_DECIMALS,

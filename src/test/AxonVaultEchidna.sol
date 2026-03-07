@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import "@openzeppelin/contracts/proxy/Clones.sol";
 import "../AxonVault.sol";
 import "../AxonRegistry.sol";
 import "../../test/mocks/MockERC20.sol";
@@ -61,7 +62,10 @@ contract AxonVaultEchidna {
         mockProtocol = new MockProtocol();
         registry.addSwapRouter(address(swapRouter));
 
-        vault = new AxonVault(address(this), address(registry));
+        AxonVault impl = new AxonVault();
+        address clone = Clones.clone(address(impl));
+        vault = AxonVault(payable(clone));
+        vault.initialize(address(this), address(registry));
         usdc.mint(address(vault), INITIAL_DEPOSIT);
         totalDeposited = INITIAL_DEPOSIT;
 

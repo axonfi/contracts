@@ -170,6 +170,37 @@ contract AxonVaultFactoryTest is Test {
     // Factory ownership (Ownable2Step)
     // =========================================================================
 
+    function test_implementation_is_set() public view {
+        assertNotEq(factory.implementation(), address(0));
+    }
+
+    function test_predictVaultAddress_matches_deployed() public {
+        address predicted = factory.predictVaultAddress(alice, 0);
+        vm.prank(alice);
+        address actual = factory.deployVault();
+        assertEq(predicted, actual);
+    }
+
+    function test_predictVaultAddress_second_vault() public {
+        vm.prank(alice);
+        factory.deployVault(); // nonce 0
+
+        address predicted = factory.predictVaultAddress(alice, 1);
+        vm.prank(alice);
+        address actual = factory.deployVault(); // nonce 1
+        assertEq(predicted, actual);
+    }
+
+    function test_different_owners_different_addresses() public {
+        address alicePredicted = factory.predictVaultAddress(alice, 0);
+        address bobPredicted = factory.predictVaultAddress(bob, 0);
+        assertNotEq(alicePredicted, bobPredicted);
+    }
+
+    // =========================================================================
+    // Factory ownership (Ownable2Step)
+    // =========================================================================
+
     function test_factory_ownership_transfer_two_step() public {
         address newAxon = makeAddr("newAxon");
 

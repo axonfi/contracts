@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "@openzeppelin/contracts/access/Ownable2Step.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
+import "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -33,7 +33,15 @@ import "./libraries/TwapOracle.sol";
 ///         - All other limits (daily, velocity, AI thresholds) stored on-chain, enforced by relayer
 ///         - Operator hot wallet is bounded by owner-set OperatorCeilings — cannot drain vault
 ///         - Global pause available to owner (and operator for emergencies); only owner can unpause
-contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712, ERC165, IERC721Receiver, IERC1155Receiver {
+contract AxonVault is
+    Ownable2StepUpgradeable,
+    PausableUpgradeable,
+    ReentrancyGuardTransient,
+    EIP712Upgradeable,
+    ERC165,
+    IERC721Receiver,
+    IERC1155Receiver
+{
     using SafeERC20 for IERC20;
     using ECDSA for bytes32;
 
@@ -133,11 +141,11 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712, ERC165, I
     }
 
     // =========================================================================
-    // Immutable state
+    // Immutable state (set once in initialize, never changes)
     // =========================================================================
 
-    /// @notice Axon's AxonRegistry for this chain. Immutable — set at deploy, never changes.
-    address public immutable axonRegistry;
+    /// @notice Axon's AxonRegistry for this chain. Set once in initialize(), never changes.
+    address public axonRegistry;
 
     // =========================================================================
     // Mutable state
@@ -282,13 +290,24 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712, ERC165, I
     }
 
     // =========================================================================
-    // Constructor
+    // Constructor & Initializer (EIP-1167 clone pattern)
     // =========================================================================
 
+    /// @dev Locks the implementation contract so it cannot be initialized directly.
+    ///      Only clones created by the factory can be initialized.
+    constructor() {
+        _disableInitializers();
+    }
+
+    /// @notice Initialize the vault. Called once by the factory after cloning.
     /// @param _owner           The Owner — vault owner, cold wallet recommended.
-    /// @param _axonRegistry    Axon's AxonRegistry for this chain. Immutable.
-    constructor(address _owner, address _axonRegistry) Ownable(_owner) EIP712("AxonVault", "1") {
+    /// @param _axonRegistry    Axon's AxonRegistry for this chain. Set once, never changes.
+    function initialize(address _owner, address _axonRegistry) external initializer {
         if (_axonRegistry == address(0)) revert ZeroAddress();
+        __Ownable_init(_owner);
+        __Ownable2Step_init();
+        __Pausable_init();
+        __EIP712_init("AxonVault", "1");
         axonRegistry = _axonRegistry;
     }
 
