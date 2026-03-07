@@ -1055,6 +1055,15 @@ contract AxonVaultTest is Test {
         assertEq(vault.owner(), newOwner);
     }
 
+    function test_renounceOwnership_always_reverts() public {
+        vm.prank(vaultOwner);
+        vm.expectRevert("AxonVault: renounce disabled");
+        vault.renounceOwnership();
+
+        // Still owned
+        assertEq(vault.owner(), vaultOwner);
+    }
+
     // =========================================================================
     // SpendingLimit.maxCount
     // =========================================================================

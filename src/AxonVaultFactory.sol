@@ -28,6 +28,11 @@ contract AxonVaultFactory is Ownable2Step {
         axonRegistry = _axonRegistry;
     }
 
+    /// @dev Disabled — renouncing ownership would brick the factory.
+    function renounceOwnership() public pure override {
+        revert("AxonVaultFactory: renounce disabled");
+    }
+
     /// @notice Deploy a new AxonVault for the caller (the Owner).
     ///         The vault is owned by msg.sender and uses this factory's AxonRegistry.
     function deployVault() external returns (address vault) {

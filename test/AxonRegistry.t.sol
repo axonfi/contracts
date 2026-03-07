@@ -265,6 +265,15 @@ contract AxonRegistryTest is Test {
         assertEq(registry.owner(), newOwner);
     }
 
+    function test_renounceOwnership_always_reverts() public {
+        vm.prank(owner);
+        vm.expectRevert("AxonRegistry: renounce disabled");
+        registry.renounceOwnership();
+
+        // Still owned
+        assertEq(registry.owner(), owner);
+    }
+
     function test_pending_owner_cannot_act_before_accepting() public {
         address newOwner = makeAddr("newOwner");
 

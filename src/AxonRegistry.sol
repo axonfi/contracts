@@ -42,6 +42,11 @@ contract AxonRegistry is IAxonRegistry, Ownable2Step {
 
     constructor(address initialOwner) Ownable(initialOwner) { }
 
+    /// @dev Disabled — renouncing ownership would brick the registry.
+    function renounceOwnership() public pure override {
+        revert("AxonRegistry: renounce disabled");
+    }
+
     // =========================================================================
     // Relayer management
     // =========================================================================

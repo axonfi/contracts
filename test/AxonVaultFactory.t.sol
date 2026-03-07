@@ -37,6 +37,14 @@ contract AxonVaultFactoryTest is Test {
         new AxonVaultFactory(address(0), axonDeployer);
     }
 
+    function test_renounceOwnership_always_reverts() public {
+        vm.prank(axonDeployer);
+        vm.expectRevert("AxonVaultFactory: renounce disabled");
+        factory.renounceOwnership();
+
+        assertEq(factory.owner(), axonDeployer);
+    }
+
     // =========================================================================
     // deployVault
     // =========================================================================

@@ -291,6 +291,11 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712, ERC165, I
         axonRegistry = _axonRegistry;
     }
 
+    /// @dev Disabled — renouncing ownership would permanently brick the vault.
+    function renounceOwnership() public pure override {
+        revert("AxonVault: renounce disabled");
+    }
+
     // =========================================================================
     // Owner-only configuration
     // =========================================================================
