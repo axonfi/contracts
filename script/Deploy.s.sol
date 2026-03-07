@@ -99,20 +99,6 @@ contract Deploy is Script {
                 0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d, // USDC
                 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1 // WETH
             );
-        } else if (block.chainid == 10) {
-            // Optimism
-            registry.setOracleConfig(
-                0x1F98431c8aD98523631AE4a59f267346ea31F984, // Uniswap V3 Factory
-                0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85, // USDC
-                0x4200000000000000000000000000000000000006 // WETH
-            );
-        } else if (block.chainid == 137) {
-            // Polygon PoS
-            registry.setOracleConfig(
-                0x1F98431c8aD98523631AE4a59f267346ea31F984, // Uniswap V3 Factory
-                0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359, // USDC
-                0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270 // WMATIC (WETH equivalent)
-            );
         }
 
         // ── Approve default tokens ──────────────────────────────────────────
