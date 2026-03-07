@@ -262,6 +262,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712, ERC165, I
     error RebalanceTokenNotAllowed();
     error MaxRebalanceAmountExceeded();
     error SameTokenSwap();
+    error DefaultTokenCallRestricted();
 
     // =========================================================================
     // Modifiers
@@ -296,7 +297,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712, ERC165, I
 
     /// @notice Assign or rotate the operator hot wallet. Use address(0) to unset.
     function setOperator(address _operator) external onlyOwner {
-        if (_operator == owner()) revert OperatorCannotBeOwner();
+        if (_operator == owner() || (_operator != address(0) && _operator == pendingOwner())) revert OperatorCannotBeOwner();
         address old = operator;
         operator = _operator;
         emit OperatorSet(old, _operator);
@@ -719,19 +720,24 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712, ERC165, I
         // Separate swap cap on INPUT amount (value at risk), not gameable output
         _checkMaxRebalanceAmount(bot, fromToken, maxFromAmount);
 
-        // Snapshot vault balance of toToken before swap
+        // Snapshot vault balances before swap
+        uint256 fromBalanceBefore =
+            (fromToken == NATIVE_ETH) ? address(this).balance : IERC20(fromToken).balanceOf(address(this));
         uint256 toBalanceBefore =
             (intent.toToken == NATIVE_ETH) ? address(this).balance : IERC20(intent.toToken).balanceOf(address(this));
 
         _doSwap(fromToken, maxFromAmount, swapRouter, swapCalldata);
 
         // Verify vault received at least minToAmount
+        uint256 fromBalanceAfter =
+            (fromToken == NATIVE_ETH) ? address(this).balance : IERC20(fromToken).balanceOf(address(this));
         uint256 toBalanceAfter =
             (intent.toToken == NATIVE_ETH) ? address(this).balance : IERC20(intent.toToken).balanceOf(address(this));
+        uint256 actualFromAmount = fromBalanceBefore - fromBalanceAfter;
         uint256 toReceived = toBalanceAfter - toBalanceBefore;
         if (toReceived < intent.minToAmount) revert SwapOutputInsufficient();
 
-        emit SwapExecuted(intent.bot, fromToken, intent.toToken, maxFromAmount, toReceived, intent.ref);
+        emit SwapExecuted(intent.bot, fromToken, intent.toToken, actualFromAmount, toReceived, intent.ref);
     }
 
     // =========================================================================
@@ -762,8 +768,17 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712, ERC165, I
         bytes calldata swapCalldata
     ) external nonReentrant whenNotPaused onlyRelayer returns (bytes memory) {
         if (block.timestamp > intent.deadline) revert DeadlineExpired();
-        if (!approvedProtocols[intent.protocol] && !IAxonRegistry(axonRegistry).isDefaultToken(intent.protocol))
+        bool isDefault = IAxonRegistry(axonRegistry).isDefaultToken(intent.protocol);
+        if (!approvedProtocols[intent.protocol] && !isDefault)
             revert ContractNotApproved();
+
+        // Default tokens (e.g. USDC) may only be called with approve() — block drain vectors
+        if (isDefault) {
+            if (callData.length < 4) revert DefaultTokenCallRestricted();
+            bytes4 selector = bytes4(callData[:4]);
+            // approve(address,uint256) = 0x095ea7b3
+            if (selector != bytes4(0x095ea7b3)) revert DefaultTokenCallRestricted();
+        }
 
         BotConfig storage bot = _bots[intent.bot];
         if (!bot.isActive) revert BotNotActive();
@@ -949,8 +964,9 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712, ERC165, I
 
         // AI trigger floor: operator cannot set a threshold above the floor
         // (higher threshold = fewer transactions get AI-scanned = loosening coverage)
-        if (c.minAiTriggerFloor > 0 && params.aiTriggerThreshold > 0) {
-            if (params.aiTriggerThreshold > c.minAiTriggerFloor) {
+        // threshold=0 means "never trigger AI by amount" = most permissive → must be blocked
+        if (c.minAiTriggerFloor > 0) {
+            if (params.aiTriggerThreshold == 0 || params.aiTriggerThreshold > c.minAiTriggerFloor) {
                 revert ExceedsOperatorCeiling();
             }
         }

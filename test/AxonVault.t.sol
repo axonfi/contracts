@@ -362,7 +362,7 @@ contract AxonVaultTest is Test {
             maxPerTxAmount: 500 * USDC_DECIMALS,
             maxRebalanceAmount: 0,
             spendingLimits: new AxonVault.SpendingLimit[](0),
-            aiTriggerThreshold: 0,
+            aiTriggerThreshold: 100 * USDC_DECIMALS,
             requireAiVerification: false
         });
         vm.prank(operator);
@@ -377,7 +377,7 @@ contract AxonVaultTest is Test {
             maxPerTxAmount: 500 * USDC_DECIMALS,
             maxRebalanceAmount: 0,
             spendingLimits: new AxonVault.SpendingLimit[](0),
-            aiTriggerThreshold: 0,
+            aiTriggerThreshold: 100 * USDC_DECIMALS,
             requireAiVerification: false
         });
         vm.prank(operator);
@@ -418,7 +418,7 @@ contract AxonVaultTest is Test {
             maxPerTxAmount: 500 * USDC_DECIMALS,
             maxRebalanceAmount: 0,
             spendingLimits: new AxonVault.SpendingLimit[](0),
-            aiTriggerThreshold: 0,
+            aiTriggerThreshold: 100 * USDC_DECIMALS,
             requireAiVerification: false
         });
 
@@ -429,6 +429,20 @@ contract AxonVaultTest is Test {
         vm.prank(operator);
         vm.expectRevert(AxonVault.OperatorBotLimitReached.selector);
         vault.addBot(bot3, params); // Second — over limit
+    }
+
+    function test_operator_addBot_reverts_aiThreshold_zero_when_floor_set() public {
+        // NM-002: threshold=0 with floor set = most permissive → must be blocked
+        AxonVault.BotConfigParams memory params = AxonVault.BotConfigParams({
+            maxPerTxAmount: 500 * USDC_DECIMALS,
+            maxRebalanceAmount: 0,
+            spendingLimits: new AxonVault.SpendingLimit[](0),
+            aiTriggerThreshold: 0,
+            requireAiVerification: false
+        });
+        vm.prank(operator);
+        vm.expectRevert(AxonVault.ExceedsOperatorCeiling.selector);
+        vault.addBot(bot2, params);
     }
 
     function test_operator_addBot_reverts_maxPerTx_exceeds_ceiling() public {
@@ -2942,6 +2956,113 @@ contract AxonVaultTest is Test {
         vm.prank(relayer);
         vm.expectRevert(AxonVault.ContractNotApproved.selector);
         vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
+    }
+
+    // =========================================================================
+    // Nemesis audit fixes (NM-001, NM-002, NM-003, NM-004)
+    // =========================================================================
+
+    /// @dev NM-001: Default token transfer() blocked — only approve() allowed
+    function test_executeProtocol_reverts_default_token_transfer() public {
+        MockERC20 freshToken = new MockERC20("Fresh", "FRESH", 6);
+        registry.approveDefaultToken(address(freshToken));
+        freshToken.mint(address(vault), 10_000e6);
+
+        // Try calling transfer() on the default token — drain vector
+        bytes memory callData = abi.encodeWithSignature("transfer(address,uint256)", address(0xdead), 10_000e6);
+        AxonVault.ExecuteIntent memory intent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(freshToken),
+            calldataHash: keccak256(callData),
+            token: address(0),
+            amount: 0,
+            deadline: _deadline(),
+            ref: bytes32("nm001-transfer")
+        });
+        bytes memory sig = _signExecute(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.DefaultTokenCallRestricted.selector);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
+    }
+
+    /// @dev NM-001: Default token transferFrom() also blocked
+    function test_executeProtocol_reverts_default_token_transferFrom() public {
+        MockERC20 freshToken = new MockERC20("Fresh", "FRESH", 6);
+        registry.approveDefaultToken(address(freshToken));
+
+        bytes memory callData = abi.encodeWithSignature("transferFrom(address,address,uint256)", address(vault), address(0xdead), 1000e6);
+        AxonVault.ExecuteIntent memory intent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(freshToken),
+            calldataHash: keccak256(callData),
+            token: address(0),
+            amount: 0,
+            deadline: _deadline(),
+            ref: bytes32("nm001-transferFrom")
+        });
+        bytes memory sig = _signExecute(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.DefaultTokenCallRestricted.selector);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
+    }
+
+    /// @dev NM-001: Default token approve() still works (legitimate use case)
+    function test_executeProtocol_allows_default_token_approve() public {
+        MockERC20 freshToken = new MockERC20("Fresh", "FRESH", 6);
+        registry.approveDefaultToken(address(freshToken));
+
+        bytes memory callData = abi.encodeWithSignature("approve(address,uint256)", address(mockProtocol), 1000e6);
+        AxonVault.ExecuteIntent memory intent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(freshToken),
+            calldataHash: keccak256(callData),
+            token: address(0),
+            amount: 0,
+            deadline: _deadline(),
+            ref: bytes32("nm001-approve-ok")
+        });
+        bytes memory sig = _signExecute(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
+    }
+
+    /// @dev NM-001: Locally approved protocol is NOT restricted (only default tokens)
+    function test_executeProtocol_local_protocol_allows_any_calldata() public {
+        bytes memory callData = abi.encodeCall(MockProtocol.closeTrade, (1));
+        AxonVault.ExecuteIntent memory intent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(mockProtocol),
+            calldataHash: keccak256(callData),
+            token: address(0),
+            amount: 0,
+            deadline: _deadline(),
+            ref: bytes32("nm001-local-ok")
+        });
+        bytes memory sig = _signExecute(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
+    }
+
+    /// @dev NM-003: Cannot set operator to pendingOwner
+    function test_setOperator_reverts_pendingOwner() public {
+        address newOwner = makeAddr("newOwner");
+        vm.prank(vaultOwner);
+        vault.transferOwnership(newOwner);
+
+        vm.prank(vaultOwner);
+        vm.expectRevert(AxonVault.OperatorCannotBeOwner.selector);
+        vault.setOperator(newOwner);
+    }
+
+    /// @dev NM-003: Setting operator to address(0) still works even when pendingOwner is zero
+    function test_setOperator_zero_still_works_with_no_pendingOwner() public {
+        vm.prank(vaultOwner);
+        vault.setOperator(address(0));
+        assertEq(vault.operator(), address(0));
     }
 
     // =========================================================================
