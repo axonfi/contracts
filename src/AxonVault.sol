@@ -8,6 +8,11 @@ import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
+import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import "./interfaces/IAxonRegistry.sol";
 import "./libraries/TwapOracle.sol";
 
@@ -28,7 +33,7 @@ import "./libraries/TwapOracle.sol";
 ///         - All other limits (daily, velocity, AI thresholds) stored on-chain, enforced by relayer
 ///         - Operator hot wallet is bounded by owner-set OperatorCeilings — cannot drain vault
 ///         - Global pause available to owner (and operator for emergencies); only owner can unpause
-contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
+contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712, ERC165, IERC721Receiver, IERC1155Receiver {
     using SafeERC20 for IERC20;
     using ECDSA for bytes32;
 
@@ -194,6 +199,8 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
 
     event Deposited(address indexed from, address indexed token, uint256 amount, bytes32 ref);
     event Withdrawn(address indexed token, uint256 amount, address indexed to);
+    event ERC721Withdrawn(address indexed nft, uint256 indexed tokenId, address indexed to);
+    event ERC1155Withdrawn(address indexed token, uint256 indexed id, uint256 amount, address indexed to);
 
     event OperatorSet(address indexed oldOperator, address indexed newOperator);
     event OperatorCeilingsUpdated(OperatorCeilings ceilings);
@@ -552,6 +559,21 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         if (to == address(0)) revert ZeroAddress();
         _transferOut(token, to, amount);
         emit Withdrawn(token, amount, to);
+    }
+
+    /// @notice Withdraw an ERC-721 NFT from the vault. Owner only.
+    function withdrawERC721(address nft, uint256 tokenId, address to) external nonReentrant onlyOwner {
+        if (to == address(0)) revert ZeroAddress();
+        IERC721(nft).safeTransferFrom(address(this), to, tokenId);
+        emit ERC721Withdrawn(nft, tokenId, to);
+    }
+
+    /// @notice Withdraw ERC-1155 tokens from the vault. Owner only.
+    function withdrawERC1155(address token, uint256 id, uint256 amount, address to) external nonReentrant onlyOwner {
+        if (amount == 0) revert ZeroAmount();
+        if (to == address(0)) revert ZeroAddress();
+        IERC1155(token).safeTransferFrom(address(this), to, id, amount, "");
+        emit ERC1155Withdrawn(token, id, amount, to);
     }
 
     // =========================================================================
@@ -944,5 +966,27 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
                 }
             }
         }
+    }
+
+    // =========================================================================
+    // NFT receiver support (ERC-721 + ERC-1155)
+    // =========================================================================
+
+    function onERC721Received(address, address, uint256, bytes calldata) external pure override returns (bytes4) {
+        return this.onERC721Received.selector;
+    }
+
+    function onERC1155Received(address, address, uint256, uint256, bytes calldata) external pure override returns (bytes4) {
+        return this.onERC1155Received.selector;
+    }
+
+    function onERC1155BatchReceived(address, address, uint256[] calldata, uint256[] calldata, bytes calldata) external pure override returns (bytes4) {
+        return this.onERC1155BatchReceived.selector;
+    }
+
+    function supportsInterface(bytes4 interfaceId) public view override(ERC165, IERC165) returns (bool) {
+        return interfaceId == type(IERC721Receiver).interfaceId
+            || interfaceId == type(IERC1155Receiver).interfaceId
+            || super.supportsInterface(interfaceId);
     }
 }
