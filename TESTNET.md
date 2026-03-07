@@ -10,8 +10,8 @@
 
 | Contract                 | Address                                      |
 | ------------------------ | -------------------------------------------- |
-| AxonRegistry             | `0xC6d3B352B379F2cac502bB10f44C8B734A7f5B7d` |
-| AxonVaultFactory         | `0x465ba07FD898239e4D64F3cE2E02F210DD2A4c51` |
+| AxonRegistry             | `0xD50984676E2D2a6A3C1b8d44098B57f2B716136e` |
+| AxonVaultFactory         | `0x14ca00A0a9AC5CDfB3285Ff6B86f67C9F4df8eDC` |
 | USDC                     | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | USDT                     | `0x323e78f944A9a1FcF3a10efcC5319DBb0bB6e673` |
 | WETH                     | `0x4200000000000000000000000000000000000006` |
@@ -21,8 +21,8 @@
 
 | Contract                 | Address                                      |
 | ------------------------ | -------------------------------------------- |
-| AxonRegistry             | `0x7bBE5674113E7630B99eA0Fa491DE236f76c874d` |
-| AxonVaultFactory         | `0x51192f74C81651156bc3a9110706085Bd5AC9de0` |
+| AxonRegistry             | `0x2663B396c4589F5F90322189BeddFd46c063d81b` |
+| AxonVaultFactory         | `0xbA376dF6e38A5769D1e837A432E4ac3320179c51` |
 | USDC                     | `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` |
 | WETH                     | `0x82aF49447D8a07e3bd95BD0d56f35241523fBab1` |
 | Uniswap V3 SwapRouter    | `0x101F443B4d1b059569D643917553c771E1b9663E` |
