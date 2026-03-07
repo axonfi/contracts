@@ -7,6 +7,8 @@ import "../src/AxonRegistry.sol";
 import "./mocks/MockERC20.sol";
 import "./mocks/MockSwapRouter.sol";
 import "./mocks/MockProtocol.sol";
+import "./mocks/MockERC721.sol";
+import "./mocks/MockERC1155.sol";
 
 contract AxonVaultTest is Test {
     // =========================================================================
@@ -2940,5 +2942,186 @@ contract AxonVaultTest is Test {
         vm.prank(relayer);
         vm.expectRevert(AxonVault.ContractNotApproved.selector);
         vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
+    }
+
+    // =========================================================================
+    // NFT support — ERC-721
+    // =========================================================================
+
+    function test_erc721_safeMint_to_vault() public {
+        MockERC721 nft = new MockERC721();
+        uint256 tokenId = nft.safeMint(address(vault));
+        assertEq(nft.ownerOf(tokenId), address(vault));
+        assertEq(nft.balanceOf(address(vault)), 1);
+    }
+
+    function test_erc721_unsafeMint_to_vault() public {
+        MockERC721 nft = new MockERC721();
+        uint256 tokenId = nft.unsafeMint(address(vault));
+        assertEq(nft.ownerOf(tokenId), address(vault));
+        assertEq(nft.balanceOf(address(vault)), 1);
+    }
+
+    function test_erc721_multiple_mints() public {
+        MockERC721 nft = new MockERC721();
+        nft.safeMint(address(vault));
+        nft.safeMint(address(vault));
+        nft.unsafeMint(address(vault));
+        assertEq(nft.balanceOf(address(vault)), 3);
+    }
+
+    function test_erc721_safeTransferFrom_to_vault() public {
+        MockERC721 nft = new MockERC721();
+        uint256 tokenId = nft.safeMint(address(this));
+        nft.safeTransferFrom(address(this), address(vault), tokenId);
+        assertEq(nft.ownerOf(tokenId), address(vault));
+    }
+
+    function test_withdrawERC721_by_owner() public {
+        MockERC721 nft = new MockERC721();
+        uint256 tokenId = nft.safeMint(address(vault));
+
+        vm.prank(vaultOwner);
+        vault.withdrawERC721(address(nft), tokenId, recipient);
+
+        assertEq(nft.ownerOf(tokenId), recipient);
+        assertEq(nft.balanceOf(address(vault)), 0);
+    }
+
+    function test_withdrawERC721_reverts_non_owner() public {
+        MockERC721 nft = new MockERC721();
+        uint256 tokenId = nft.safeMint(address(vault));
+
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", attacker));
+        vault.withdrawERC721(address(nft), tokenId, recipient);
+    }
+
+    function test_withdrawERC721_reverts_operator() public {
+        MockERC721 nft = new MockERC721();
+        uint256 tokenId = nft.safeMint(address(vault));
+
+        vm.prank(operator);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", operator));
+        vault.withdrawERC721(address(nft), tokenId, recipient);
+    }
+
+    function test_withdrawERC721_reverts_zero_address() public {
+        MockERC721 nft = new MockERC721();
+        uint256 tokenId = nft.safeMint(address(vault));
+
+        vm.prank(vaultOwner);
+        vm.expectRevert(AxonVault.ZeroAddress.selector);
+        vault.withdrawERC721(address(nft), tokenId, address(0));
+    }
+
+    function test_erc721_via_executeProtocol() public {
+        MockERC721 nft = new MockERC721();
+        vm.prank(vaultOwner);
+        vault.approveProtocol(address(nft));
+
+        bytes memory callData = abi.encodeWithSignature("safeMint(address)", address(vault));
+
+        AxonVault.ExecuteIntent memory intent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(nft),
+            calldataHash: keccak256(callData),
+            token: address(0),
+            amount: 0,
+            deadline: _deadline(),
+            ref: bytes32("nft-mint")
+        });
+        bytes memory sig = _signExecute(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
+
+        assertEq(nft.balanceOf(address(vault)), 1);
+    }
+
+    // =========================================================================
+    // NFT support — ERC-1155
+    // =========================================================================
+
+    function test_erc1155_mint_to_vault() public {
+        MockERC1155 token = new MockERC1155();
+        token.mint(address(vault), 1, 10);
+        assertEq(token.balanceOf(address(vault), 1), 10);
+    }
+
+    function test_erc1155_mintBatch_to_vault() public {
+        MockERC1155 token = new MockERC1155();
+        uint256[] memory ids = new uint256[](3);
+        uint256[] memory amounts = new uint256[](3);
+        ids[0] = 1; ids[1] = 2; ids[2] = 3;
+        amounts[0] = 10; amounts[1] = 20; amounts[2] = 30;
+        token.mintBatch(address(vault), ids, amounts);
+
+        assertEq(token.balanceOf(address(vault), 1), 10);
+        assertEq(token.balanceOf(address(vault), 2), 20);
+        assertEq(token.balanceOf(address(vault), 3), 30);
+    }
+
+    function test_withdrawERC1155_by_owner() public {
+        MockERC1155 token = new MockERC1155();
+        token.mint(address(vault), 1, 10);
+
+        vm.prank(vaultOwner);
+        vault.withdrawERC1155(address(token), 1, 5, recipient);
+
+        assertEq(token.balanceOf(address(vault), 1), 5);
+        assertEq(token.balanceOf(recipient, 1), 5);
+    }
+
+    function test_withdrawERC1155_reverts_non_owner() public {
+        MockERC1155 token = new MockERC1155();
+        token.mint(address(vault), 1, 10);
+
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", attacker));
+        vault.withdrawERC1155(address(token), 1, 5, recipient);
+    }
+
+    function test_withdrawERC1155_reverts_zero_amount() public {
+        MockERC1155 token = new MockERC1155();
+        token.mint(address(vault), 1, 10);
+
+        vm.prank(vaultOwner);
+        vm.expectRevert(AxonVault.ZeroAmount.selector);
+        vault.withdrawERC1155(address(token), 1, 0, recipient);
+    }
+
+    function test_withdrawERC1155_reverts_zero_address() public {
+        MockERC1155 token = new MockERC1155();
+        token.mint(address(vault), 1, 10);
+
+        vm.prank(vaultOwner);
+        vm.expectRevert(AxonVault.ZeroAddress.selector);
+        vault.withdrawERC1155(address(token), 1, 5, address(0));
+    }
+
+    // =========================================================================
+    // ERC-165 supportsInterface
+    // =========================================================================
+
+    function test_supportsInterface_erc721_receiver() public view {
+        assertTrue(vault.supportsInterface(type(IERC721Receiver).interfaceId));
+    }
+
+    function test_supportsInterface_erc1155_receiver() public view {
+        assertTrue(vault.supportsInterface(type(IERC1155Receiver).interfaceId));
+    }
+
+    function test_supportsInterface_erc165() public view {
+        assertTrue(vault.supportsInterface(type(IERC165).interfaceId));
+    }
+
+    function test_supportsInterface_random_returns_false() public view {
+        assertFalse(vault.supportsInterface(0xdeadbeef));
+    }
+
+    // Needed for safeTransferFrom test (this contract sends an NFT to the vault)
+    function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
+        return this.onERC721Received.selector;
     }
 }
