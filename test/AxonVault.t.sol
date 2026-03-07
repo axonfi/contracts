@@ -51,7 +51,7 @@ contract AxonVaultTest is Test {
     bytes32 constant PAYMENT_INTENT_TYPEHASH =
         keccak256("PaymentIntent(address bot,address to,address token,uint256 amount,uint256 deadline,bytes32 ref)");
     bytes32 constant EXECUTE_INTENT_TYPEHASH = keccak256(
-        "ExecuteIntent(address bot,address protocol,bytes32 calldataHash,address token,uint256 amount,uint256 deadline,bytes32 ref)"
+        "ExecuteIntent(address bot,address protocol,bytes32 calldataHash,address token,uint256 amount,uint256 value,uint256 deadline,bytes32 ref)"
     );
     bytes32 constant SWAP_INTENT_TYPEHASH =
         keccak256("SwapIntent(address bot,address toToken,uint256 minToAmount,uint256 deadline,bytes32 ref)");
@@ -1530,6 +1530,7 @@ contract AxonVaultTest is Test {
                 intent.calldataHash,
                 intent.token,
                 intent.amount,
+                intent.value,
                 intent.deadline,
                 intent.ref
             )
@@ -1633,6 +1634,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(usdc),
             amount: collateral,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("open-trade-001")
         });
@@ -1662,6 +1664,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(usdc),
             amount: collateral,
+            value: 0,
             deadline: _deadline(),
             ref: ref
         });
@@ -1684,6 +1687,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("close-trade-42")
         });
@@ -1703,6 +1707,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(usdc),
             amount: collateral,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("return-data-test")
         });
@@ -1728,6 +1733,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("ref")
         });
@@ -1746,6 +1752,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: block.timestamp - 1,
             ref: bytes32("ref")
         });
@@ -1767,6 +1774,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("ref")
         });
@@ -1786,6 +1794,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("ref")
         });
@@ -1806,6 +1815,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(signedCallData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("ref")
         });
@@ -1824,6 +1834,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("ref")
         });
@@ -1842,6 +1853,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("ref")
         });
@@ -1879,6 +1891,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(usdc),
             amount: tooMuch,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("ref")
         });
@@ -1900,6 +1913,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("ref")
         });
@@ -1919,6 +1933,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("ref")
         });
@@ -1950,6 +1965,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(usdc),
             amount: bigAmount,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("big-trade")
         });
@@ -1972,6 +1988,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("ref")
         });
@@ -1999,6 +2016,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(usdt),
             amount: collateral,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("preswap-trade")
         });
@@ -2037,6 +2055,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(usdt),
             amount: collateral,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("no-swap-needed")
         });
@@ -2057,6 +2076,150 @@ contract AxonVaultTest is Test {
         // Protocol got USDT, vault USDC untouched (swap was skipped)
         assertEq(usdt.balanceOf(address(mockProtocol)), collateral);
         assertEq(usdc.balanceOf(address(vault)), vaultUsdcBefore);
+    }
+
+    // =========================================================================
+    // executeProtocol — msg.value forwarding
+    // =========================================================================
+
+    function test_executeProtocol_forwards_msg_value() public {
+        // Fund vault with ETH
+        vm.deal(address(vault), 1 ether);
+
+        bytes memory callData = abi.encodeCall(MockProtocol.payableAction, ());
+
+        AxonVault.ExecuteIntent memory intent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(mockProtocol),
+            calldataHash: keccak256(callData),
+            token: address(usdc),
+            amount: 0,
+            value: 0.5 ether,
+            deadline: _deadline(),
+            ref: bytes32("eth-forward-001")
+        });
+        bytes memory sig = _signExecute(BOT_KEY, intent);
+
+        uint256 protocolBefore = address(mockProtocol).balance;
+        uint256 vaultBefore = address(vault).balance;
+
+        vm.prank(relayer);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
+
+        // Protocol received the ETH
+        assertEq(address(mockProtocol).balance, protocolBefore + 0.5 ether);
+        // Vault balance decreased
+        assertEq(address(vault).balance, vaultBefore - 0.5 ether);
+    }
+
+    function test_executeProtocol_zero_value_sends_no_eth() public {
+        vm.deal(address(vault), 1 ether);
+
+        bytes memory callData = abi.encodeCall(MockProtocol.payableAction, ());
+
+        AxonVault.ExecuteIntent memory intent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(mockProtocol),
+            calldataHash: keccak256(callData),
+            token: address(usdc),
+            amount: 0,
+            value: 0,
+            deadline: _deadline(),
+            ref: bytes32("no-eth-001")
+        });
+        bytes memory sig = _signExecute(BOT_KEY, intent);
+
+        uint256 vaultBefore = address(vault).balance;
+
+        vm.prank(relayer);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
+
+        // Vault ETH balance unchanged — value was 0
+        assertEq(address(vault).balance, vaultBefore);
+    }
+
+    function test_executeProtocol_value_mismatch_rejected() public {
+        // If an attacker tries to change the value after bot signed, signature check fails
+        vm.deal(address(vault), 1 ether);
+
+        bytes memory callData = abi.encodeCall(MockProtocol.payableAction, ());
+
+        // Bot signs with value = 0.1 ether
+        AxonVault.ExecuteIntent memory signedIntent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(mockProtocol),
+            calldataHash: keccak256(callData),
+            token: address(usdc),
+            amount: 0,
+            value: 0.1 ether,
+            deadline: _deadline(),
+            ref: bytes32("tampered-value")
+        });
+        bytes memory sig = _signExecute(BOT_KEY, signedIntent);
+
+        // Attacker submits with value = 1 ether (trying to drain more ETH)
+        AxonVault.ExecuteIntent memory tamperedIntent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(mockProtocol),
+            calldataHash: keccak256(callData),
+            token: address(usdc),
+            amount: 0,
+            value: 1 ether, // TAMPERED
+            deadline: _deadline(),
+            ref: bytes32("tampered-value")
+        });
+
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.InvalidSignature.selector);
+        vault.executeProtocol(tamperedIntent, sig, callData, address(0), 0, address(0), "");
+    }
+
+    // =========================================================================
+    // ERC-1271 — isValidSignature
+    // =========================================================================
+
+    function test_isValidSignature_owner() public view {
+        bytes32 hash = keccak256("test message");
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(VAULT_OWNER_KEY, hash);
+        bytes memory sig = abi.encodePacked(r, s, v);
+
+        bytes4 result = vault.isValidSignature(hash, sig);
+        assertEq(result, bytes4(0x1626ba7e));
+    }
+
+    function test_isValidSignature_active_bot() public view {
+        bytes32 hash = keccak256("bot signed message");
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(BOT_KEY, hash);
+        bytes memory sig = abi.encodePacked(r, s, v);
+
+        bytes4 result = vault.isValidSignature(hash, sig);
+        assertEq(result, bytes4(0x1626ba7e));
+    }
+
+    function test_isValidSignature_unknown_signer_rejected() public view {
+        bytes32 hash = keccak256("unknown signer");
+        // Use a random key not registered as owner or bot
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(0xdead, hash);
+        bytes memory sig = abi.encodePacked(r, s, v);
+
+        bytes4 result = vault.isValidSignature(hash, sig);
+        assertEq(result, bytes4(0xffffffff));
+    }
+
+    function test_isValidSignature_removed_bot_rejected() public {
+        bytes32 hash = keccak256("removed bot");
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(BOT_KEY, hash);
+        bytes memory sig = abi.encodePacked(r, s, v);
+
+        // First verify it works
+        assertEq(vault.isValidSignature(hash, sig), bytes4(0x1626ba7e));
+
+        // Remove the bot
+        vm.prank(vaultOwner);
+        vault.removeBot(bot);
+
+        // Now should be rejected
+        assertEq(vault.isValidSignature(hash, sig), bytes4(0xffffffff));
     }
 
     // =========================================================================
@@ -2888,6 +3051,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("default-token-test")
         });
@@ -2913,6 +3077,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("removed-token")
         });
@@ -2937,6 +3102,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("local-protocol")
         });
@@ -2957,6 +3123,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("ref")
         });
@@ -2985,6 +3152,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("nm001-transfer")
         });
@@ -3000,13 +3168,15 @@ contract AxonVaultTest is Test {
         MockERC20 freshToken = new MockERC20("Fresh", "FRESH", 6);
         registry.approveDefaultToken(address(freshToken));
 
-        bytes memory callData = abi.encodeWithSignature("transferFrom(address,address,uint256)", address(vault), address(0xdead), 1000e6);
+        bytes memory callData =
+            abi.encodeWithSignature("transferFrom(address,address,uint256)", address(vault), address(0xdead), 1000e6);
         AxonVault.ExecuteIntent memory intent = AxonVault.ExecuteIntent({
             bot: bot,
             protocol: address(freshToken),
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("nm001-transferFrom")
         });
@@ -3029,6 +3199,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("nm001-approve-ok")
         });
@@ -3047,12 +3218,155 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("nm001-local-ok")
         });
         bytes memory sig = _signExecute(BOT_KEY, intent);
 
         vm.prank(relayer);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
+    }
+
+    /// @dev Default token allows approve() but blocks deposit() (mint/wrap).
+    ///      If you want deposit/withdraw, use approveProtocol (per-vault or global).
+    function test_executeProtocol_default_token_blocks_deposit() public {
+        MockERC20 freshToken = new MockERC20("WETH-like", "WETH", 18);
+        registry.approveDefaultToken(address(freshToken));
+
+        // approve() works on a default token
+        bytes memory approveData = abi.encodeWithSignature("approve(address,uint256)", address(mockProtocol), 1 ether);
+        AxonVault.ExecuteIntent memory approveIntent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(freshToken),
+            calldataHash: keccak256(approveData),
+            token: address(0),
+            amount: 0,
+            value: 0,
+            deadline: _deadline(),
+            ref: bytes32("approve-ok")
+        });
+        bytes memory approveSig = _signExecute(BOT_KEY, approveIntent);
+        vm.prank(relayer);
+        vault.executeProtocol(approveIntent, approveSig, approveData, address(0), 0, address(0), "");
+
+        // deposit() is blocked — not approve() selector
+        bytes memory depositData = abi.encodeWithSignature("deposit()");
+        AxonVault.ExecuteIntent memory depositIntent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(freshToken),
+            calldataHash: keccak256(depositData),
+            token: address(0),
+            amount: 0,
+            value: 0.1 ether,
+            deadline: _deadline(),
+            ref: bytes32("deposit-blocked")
+        });
+        bytes memory depositSig = _signExecute(BOT_KEY, depositIntent);
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.DefaultTokenCallRestricted.selector);
+        vault.executeProtocol(depositIntent, depositSig, depositData, address(0), 0, address(0), "");
+
+        // withdraw(uint256) is also blocked
+        bytes memory withdrawData = abi.encodeWithSignature("withdraw(uint256)", 0.1 ether);
+        AxonVault.ExecuteIntent memory withdrawIntent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(freshToken),
+            calldataHash: keccak256(withdrawData),
+            token: address(0),
+            amount: 0,
+            value: 0,
+            deadline: _deadline(),
+            ref: bytes32("withdraw-blocked")
+        });
+        bytes memory withdrawSig = _signExecute(BOT_KEY, withdrawIntent);
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.DefaultTokenCallRestricted.selector);
+        vault.executeProtocol(withdrawIntent, withdrawSig, withdrawData, address(0), 0, address(0), "");
+    }
+
+    // =========================================================================
+    // Global protocol approval (AxonRegistry.approveProtocol)
+    // =========================================================================
+
+    /// @dev A globally approved protocol allows any function call (not just approve).
+    function test_executeProtocol_allows_global_protocol_any_call() public {
+        // Deploy a mock protocol and add it globally on the registry
+        MockProtocol globalProto = new MockProtocol();
+        registry.approveProtocol(address(globalProto));
+
+        // Verify it's NOT in the vault's local approved list
+        assertFalse(vault.isContractApproved(address(globalProto)));
+
+        // Call a non-approve function (closeTrade) — should work
+        bytes memory callData = abi.encodeCall(MockProtocol.closeTrade, (42));
+        AxonVault.ExecuteIntent memory intent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(globalProto),
+            calldataHash: keccak256(callData),
+            token: address(0),
+            amount: 0,
+            value: 0,
+            deadline: _deadline(),
+            ref: bytes32("global-protocol")
+        });
+        bytes memory sig = _signExecute(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
+    }
+
+    /// @dev A global protocol that is also a default token bypasses the approve-only restriction.
+    function test_executeProtocol_global_protocol_overrides_default_token_restriction() public {
+        MockERC20 freshToken = new MockERC20("WETH-like", "WETH", 18);
+        freshToken.mint(address(vault), 1 ether);
+
+        // Add as both default token AND global protocol
+        registry.approveDefaultToken(address(freshToken));
+        registry.approveProtocol(address(freshToken));
+
+        // Call transfer() — normally blocked for default tokens, but allowed because it's also a global protocol
+        bytes memory callData = abi.encodeWithSignature("transfer(address,uint256)", address(0xbeef), 0.1 ether);
+        AxonVault.ExecuteIntent memory intent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(freshToken),
+            calldataHash: keccak256(callData),
+            token: address(0),
+            amount: 0,
+            value: 0,
+            deadline: _deadline(),
+            ref: bytes32("global-override")
+        });
+        bytes memory sig = _signExecute(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
+
+        // Verify transfer happened
+        assertEq(freshToken.balanceOf(address(0xbeef)), 0.1 ether);
+    }
+
+    /// @dev After revoking global protocol, calls revert (unless locally approved).
+    function test_executeProtocol_reverts_after_global_protocol_revoked() public {
+        MockProtocol globalProto = new MockProtocol();
+        registry.approveProtocol(address(globalProto));
+        registry.revokeProtocol(address(globalProto));
+
+        bytes memory callData = abi.encodeCall(MockProtocol.closeTrade, (1));
+        AxonVault.ExecuteIntent memory intent = AxonVault.ExecuteIntent({
+            bot: bot,
+            protocol: address(globalProto),
+            calldataHash: keccak256(callData),
+            token: address(0),
+            amount: 0,
+            value: 0,
+            deadline: _deadline(),
+            ref: bytes32("revoked-global")
+        });
+        bytes memory sig = _signExecute(BOT_KEY, intent);
+
+        vm.prank(relayer);
+        vm.expectRevert(AxonVault.ContractNotApproved.selector);
         vault.executeProtocol(intent, sig, callData, address(0), 0, address(0), "");
     }
 
@@ -3158,6 +3472,7 @@ contract AxonVaultTest is Test {
             calldataHash: keccak256(callData),
             token: address(0),
             amount: 0,
+            value: 0,
             deadline: _deadline(),
             ref: bytes32("nft-mint")
         });
@@ -3183,8 +3498,12 @@ contract AxonVaultTest is Test {
         MockERC1155 token = new MockERC1155();
         uint256[] memory ids = new uint256[](3);
         uint256[] memory amounts = new uint256[](3);
-        ids[0] = 1; ids[1] = 2; ids[2] = 3;
-        amounts[0] = 10; amounts[1] = 20; amounts[2] = 30;
+        ids[0] = 1;
+        ids[1] = 2;
+        ids[2] = 3;
+        amounts[0] = 10;
+        amounts[1] = 20;
+        amounts[2] = 30;
         token.mintBatch(address(vault), ids, amounts);
 
         assertEq(token.balanceOf(address(vault), 1), 10);

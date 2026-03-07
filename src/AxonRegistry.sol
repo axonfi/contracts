@@ -21,6 +21,11 @@ contract AxonRegistry is IAxonRegistry, Ownable2Step {
     // Full list reconstructable off-chain via DefaultTokenApproved/Revoked events.
     mapping(address => bool) private _isDefaultToken;
 
+    // Globally approved protocols — usable in executeProtocol on all vaults.
+    // Unlike default tokens, these allow ANY function call (not restricted to approve()).
+    // Use for blue-chip protocols like WETH (deposit/withdraw), Aave, Compound, etc.
+    mapping(address => bool) private _approvedProtocols;
+
     // Oracle config — used by vaults for on-chain TWAP price lookups
     address private _uniswapV3Factory;
     address private _usdcAddress;
@@ -32,6 +37,8 @@ contract AxonRegistry is IAxonRegistry, Ownable2Step {
     event SwapRouterRemoved(address indexed router);
     event DefaultTokenApproved(address indexed token);
     event DefaultTokenRevoked(address indexed token);
+    event ProtocolApproved(address indexed protocol);
+    event ProtocolRevoked(address indexed protocol);
     event OracleConfigUpdated(address uniswapV3Factory, address usdc, address weth);
 
     error ZeroAddress();
@@ -117,6 +124,31 @@ contract AxonRegistry is IAxonRegistry, Ownable2Step {
     /// @notice Returns true if the token is a default token. Called by vaults on executeProtocol.
     function isDefaultToken(address token) external view override returns (bool) {
         return _isDefaultToken[token];
+    }
+
+    // =========================================================================
+    // Global protocol management
+    // =========================================================================
+
+    /// @notice Approve a protocol globally. Usable in executeProtocol on all vaults.
+    ///         Unlike default tokens, these allow any function call (not just approve).
+    function approveProtocol(address protocol) external onlyOwner {
+        if (protocol == address(0)) revert ZeroAddress();
+        if (_approvedProtocols[protocol]) revert AlreadyApproved();
+        _approvedProtocols[protocol] = true;
+        emit ProtocolApproved(protocol);
+    }
+
+    /// @notice Revoke a globally approved protocol.
+    function revokeProtocol(address protocol) external onlyOwner {
+        if (!_approvedProtocols[protocol]) revert NotApproved();
+        _approvedProtocols[protocol] = false;
+        emit ProtocolRevoked(protocol);
+    }
+
+    /// @notice Returns true if the protocol is globally approved.
+    function isApprovedProtocol(address protocol) external view override returns (bool) {
+        return _approvedProtocols[protocol];
     }
 
     // =========================================================================

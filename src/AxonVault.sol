@@ -49,7 +49,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712, ERC165, I
         keccak256("PaymentIntent(address bot,address to,address token,uint256 amount,uint256 deadline,bytes32 ref)");
 
     bytes32 private constant EXECUTE_INTENT_TYPEHASH = keccak256(
-        "ExecuteIntent(address bot,address protocol,bytes32 calldataHash,address token,uint256 amount,uint256 deadline,bytes32 ref)"
+        "ExecuteIntent(address bot,address protocol,bytes32 calldataHash,address token,uint256 amount,uint256 value,uint256 deadline,bytes32 ref)"
     );
 
     bytes32 private constant SWAP_INTENT_TYPEHASH =
@@ -117,6 +117,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712, ERC165, I
         bytes32 calldataHash; // keccak256 of the calldata the relayer will submit
         address token; // token to approve to protocol (ignored if amount == 0)
         uint256 amount; // approval amount (0 = no approval needed)
+        uint256 value; // native ETH to send with the call (0 = no ETH)
         uint256 deadline;
         bytes32 ref;
     }
@@ -302,7 +303,9 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712, ERC165, I
 
     /// @notice Assign or rotate the operator hot wallet. Use address(0) to unset.
     function setOperator(address _operator) external onlyOwner {
-        if (_operator == owner() || (_operator != address(0) && _operator == pendingOwner())) revert OperatorCannotBeOwner();
+        if (_operator == owner() || (_operator != address(0) && _operator == pendingOwner())) {
+            revert OperatorCannotBeOwner();
+        }
         address old = operator;
         operator = _operator;
         emit OperatorSet(old, _operator);
@@ -774,11 +777,14 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712, ERC165, I
     ) external nonReentrant whenNotPaused onlyRelayer returns (bytes memory) {
         if (block.timestamp > intent.deadline) revert DeadlineExpired();
         bool isDefault = IAxonRegistry(axonRegistry).isDefaultToken(intent.protocol);
-        if (!approvedProtocols[intent.protocol] && !isDefault)
+        bool isGlobalProtocol = IAxonRegistry(axonRegistry).isApprovedProtocol(intent.protocol);
+        if (!approvedProtocols[intent.protocol] && !isDefault && !isGlobalProtocol) {
             revert ContractNotApproved();
+        }
 
-        // Default tokens (e.g. USDC) may only be called with approve() — block drain vectors
-        if (isDefault) {
+        // Default tokens (e.g. USDC) may only be called with approve() — block drain vectors.
+        // Global protocols and per-vault approved protocols have full function access.
+        if (isDefault && !isGlobalProtocol && !approvedProtocols[intent.protocol]) {
             if (callData.length < 4) revert DefaultTokenCallRestricted();
             bytes4 selector = bytes4(callData[:4]);
             // approve(address,uint256) = 0x095ea7b3
@@ -800,6 +806,7 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712, ERC165, I
                 intent.calldataHash,
                 intent.token,
                 intent.amount,
+                intent.value,
                 intent.deadline,
                 intent.ref
             )
@@ -832,8 +839,8 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712, ERC165, I
             IERC20(intent.token).forceApprove(intent.protocol, intent.amount);
         }
 
-        // Call the protocol
-        (bool success, bytes memory returnData) = intent.protocol.call(callData);
+        // Call the protocol (forward native ETH if value > 0, e.g. WETH.deposit, Lido.submit)
+        (bool success, bytes memory returnData) = intent.protocol.call{ value: intent.value }(callData);
         if (!success) revert ProtocolCallFailed();
 
         // Revoke approval (cleanup)
@@ -997,17 +1004,46 @@ contract AxonVault is Ownable2Step, Pausable, ReentrancyGuard, EIP712, ERC165, I
         return this.onERC721Received.selector;
     }
 
-    function onERC1155Received(address, address, uint256, uint256, bytes calldata) external pure override returns (bytes4) {
+    function onERC1155Received(address, address, uint256, uint256, bytes calldata)
+        external
+        pure
+        override
+        returns (bytes4)
+    {
         return this.onERC1155Received.selector;
     }
 
-    function onERC1155BatchReceived(address, address, uint256[] calldata, uint256[] calldata, bytes calldata) external pure override returns (bytes4) {
+    function onERC1155BatchReceived(address, address, uint256[] calldata, uint256[] calldata, bytes calldata)
+        external
+        pure
+        override
+        returns (bytes4)
+    {
         return this.onERC1155BatchReceived.selector;
     }
 
+    // =========================================================================
+    // ERC-1271 — Smart contract signature validation
+    // =========================================================================
+
+    /// @notice Validates a signature on behalf of the vault (ERC-1271).
+    ///         Returns the magic value if the signer is the owner or an active bot.
+    ///         This enables the vault to "sign" off-chain orders for Seaport (OpenSea),
+    ///         limit orders (Cowswap/1inch), Permit2, and other signature-based protocols.
+    /// @param hash   The hash that was signed.
+    /// @param signature ECDSA signature bytes.
+    /// @return magicValue 0x1626ba7e if valid, 0xffffffff if invalid.
+    function isValidSignature(bytes32 hash, bytes calldata signature) external view returns (bytes4) {
+        address signer = hash.recover(signature);
+        if (signer == owner() || _bots[signer].isActive) {
+            return bytes4(0x1626ba7e); // ERC-1271 magic value
+        }
+        return bytes4(0xffffffff);
+    }
+
     function supportsInterface(bytes4 interfaceId) public view override(ERC165, IERC165) returns (bool) {
-        return interfaceId == type(IERC721Receiver).interfaceId
-            || interfaceId == type(IERC1155Receiver).interfaceId
+        return interfaceId == type(IERC721Receiver).interfaceId || interfaceId == type(IERC1155Receiver).interfaceId
+            || interfaceId == bytes4(0x1626ba7e) // IERC1271
             || super.supportsInterface(interfaceId);
     }
 }

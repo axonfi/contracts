@@ -49,19 +49,18 @@ contract AxonVaultFuzzHarness {
 
         // Register bot with $10k per-tx cap
         AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](1);
-        limits[0] = AxonVault.SpendingLimit({
-            amount: 50_000 * USDC_DECIMALS,
-            maxCount: 0,
-            windowSeconds: 86400
-        });
+        limits[0] = AxonVault.SpendingLimit({ amount: 50_000 * USDC_DECIMALS, maxCount: 0, windowSeconds: 86400 });
 
-        vault.addBot(BOT, AxonVault.BotConfigParams({
-            maxPerTxAmount: 10_000 * USDC_DECIMALS,
-            maxRebalanceAmount: 5_000 * USDC_DECIMALS,
-            spendingLimits: limits,
-            aiTriggerThreshold: 1_000 * USDC_DECIMALS,
-            requireAiVerification: false
-        }));
+        vault.addBot(
+            BOT,
+            AxonVault.BotConfigParams({
+                maxPerTxAmount: 10_000 * USDC_DECIMALS,
+                maxRebalanceAmount: 5_000 * USDC_DECIMALS,
+                spendingLimits: limits,
+                aiTriggerThreshold: 1_000 * USDC_DECIMALS,
+                requireAiVerification: false
+            })
+        );
 
         vault.approveProtocol(address(mockProtocol));
     }
@@ -72,7 +71,9 @@ contract AxonVaultFuzzHarness {
 
     function _signPayment(AxonVault.PaymentIntent memory intent) internal returns (bytes memory) {
         bytes32 structHash = keccak256(
-            abi.encode(PAYMENT_INTENT_TYPEHASH, intent.bot, intent.to, intent.token, intent.amount, intent.deadline, intent.ref)
+            abi.encode(
+                PAYMENT_INTENT_TYPEHASH, intent.bot, intent.to, intent.token, intent.amount, intent.deadline, intent.ref
+            )
         );
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", vault.DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(BOT_KEY, digest);
@@ -90,13 +91,16 @@ contract AxonVaultFuzzHarness {
     function makePayment(uint256 amount) public {
         if (amount == 0 || amount > usdc.balanceOf(address(vault))) return;
         AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
-            bot: BOT, to: RECIPIENT, token: address(usdc),
-            amount: amount, deadline: block.timestamp + 300, ref: _uniqueRef()
+            bot: BOT,
+            to: RECIPIENT,
+            token: address(usdc),
+            amount: amount,
+            deadline: block.timestamp + 300,
+            ref: _uniqueRef()
         });
         bytes memory sig = _signPayment(intent);
-        (bool ok,) = address(vault).call(
-            abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), "")
-        );
+        (bool ok,) = address(vault)
+            .call(abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), ""));
         if (ok) totalPaymentsOut += amount;
     }
 
@@ -128,13 +132,16 @@ contract AxonVaultFuzzHarness {
     function property_paused_blocks_execution() public returns (bool) {
         if (!vault.paused()) return true;
         AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
-            bot: BOT, to: RECIPIENT, token: address(usdc),
-            amount: 1 * USDC_DECIMALS, deadline: block.timestamp + 300, ref: _uniqueRef()
+            bot: BOT,
+            to: RECIPIENT,
+            token: address(usdc),
+            amount: 1 * USDC_DECIMALS,
+            deadline: block.timestamp + 300,
+            ref: _uniqueRef()
         });
         bytes memory sig = _signPayment(intent);
-        (bool ok,) = address(vault).call(
-            abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), "")
-        );
+        (bool ok,) = address(vault)
+            .call(abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), ""));
         return !ok;
     }
 
@@ -142,52 +149,59 @@ contract AxonVaultFuzzHarness {
     function property_expired_deadline_reverts() public returns (bool) {
         if (block.timestamp == 0) return true;
         AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
-            bot: BOT, to: RECIPIENT, token: address(usdc),
-            amount: 1 * USDC_DECIMALS, deadline: block.timestamp - 1, ref: _uniqueRef()
+            bot: BOT,
+            to: RECIPIENT,
+            token: address(usdc),
+            amount: 1 * USDC_DECIMALS,
+            deadline: block.timestamp - 1,
+            ref: _uniqueRef()
         });
         bytes memory sig = _signPayment(intent);
-        (bool ok,) = address(vault).call(
-            abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), "")
-        );
+        (bool ok,) = address(vault)
+            .call(abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), ""));
         return !ok;
     }
 
     /// Self-payment to vault address is blocked
     function property_self_payment_blocked() public returns (bool) {
         AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
-            bot: BOT, to: address(vault), token: address(usdc),
-            amount: 1 * USDC_DECIMALS, deadline: block.timestamp + 300, ref: _uniqueRef()
+            bot: BOT,
+            to: address(vault),
+            token: address(usdc),
+            amount: 1 * USDC_DECIMALS,
+            deadline: block.timestamp + 300,
+            ref: _uniqueRef()
         });
         bytes memory sig = _signPayment(intent);
-        (bool ok,) = address(vault).call(
-            abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), "")
-        );
+        (bool ok,) = address(vault)
+            .call(abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), ""));
         return !ok;
     }
 
     /// Zero-amount payment is blocked
     function property_zero_amount_blocked() public returns (bool) {
         AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
-            bot: BOT, to: RECIPIENT, token: address(usdc),
-            amount: 0, deadline: block.timestamp + 300, ref: _uniqueRef()
+            bot: BOT, to: RECIPIENT, token: address(usdc), amount: 0, deadline: block.timestamp + 300, ref: _uniqueRef()
         });
         bytes memory sig = _signPayment(intent);
-        (bool ok,) = address(vault).call(
-            abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), "")
-        );
+        (bool ok,) = address(vault)
+            .call(abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), ""));
         return !ok;
     }
 
     /// Payment to address(0) is blocked
     function property_zero_address_blocked() public returns (bool) {
         AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
-            bot: BOT, to: address(0), token: address(usdc),
-            amount: 1 * USDC_DECIMALS, deadline: block.timestamp + 300, ref: _uniqueRef()
+            bot: BOT,
+            to: address(0),
+            token: address(usdc),
+            amount: 1 * USDC_DECIMALS,
+            deadline: block.timestamp + 300,
+            ref: _uniqueRef()
         });
         bytes memory sig = _signPayment(intent);
-        (bool ok,) = address(vault).call(
-            abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), "")
-        );
+        (bool ok,) = address(vault)
+            .call(abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), ""));
         return !ok;
     }
 
@@ -195,21 +209,23 @@ contract AxonVaultFuzzHarness {
     function property_replay_protection() public returns (bool) {
         bytes32 ref = keccak256("replay-check");
         AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
-            bot: BOT, to: RECIPIENT, token: address(usdc),
-            amount: 1 * USDC_DECIMALS, deadline: block.timestamp + 300, ref: ref
+            bot: BOT,
+            to: RECIPIENT,
+            token: address(usdc),
+            amount: 1 * USDC_DECIMALS,
+            deadline: block.timestamp + 300,
+            ref: ref
         });
         bytes memory sig = _signPayment(intent);
 
-        (bool ok1,) = address(vault).call(
-            abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), "")
-        );
+        (bool ok1,) = address(vault)
+            .call(abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), ""));
         if (!ok1) return true; // already used
         totalPaymentsOut += 1 * USDC_DECIMALS;
 
         // Second attempt MUST fail
-        (bool ok2,) = address(vault).call(
-            abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), "")
-        );
+        (bool ok2,) = address(vault)
+            .call(abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), ""));
         return !ok2;
     }
 
@@ -217,9 +233,8 @@ contract AxonVaultFuzzHarness {
     function property_only_owner_withdraws(address caller) public returns (bool) {
         if (caller == address(this)) return true;
         vm.prank(caller);
-        (bool ok,) = address(vault).call(
-            abi.encodeWithSelector(vault.withdraw.selector, address(usdc), 1 * USDC_DECIMALS, caller)
-        );
+        (bool ok,) = address(vault)
+            .call(abi.encodeWithSelector(vault.withdraw.selector, address(usdc), 1 * USDC_DECIMALS, caller));
         return !ok;
     }
 
@@ -227,13 +242,16 @@ contract AxonVaultFuzzHarness {
     function property_blacklist_enforced(address dest) public returns (bool) {
         if (!vault.globalDestinationBlacklist(dest)) return true;
         AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
-            bot: BOT, to: dest, token: address(usdc),
-            amount: 1 * USDC_DECIMALS, deadline: block.timestamp + 300, ref: _uniqueRef()
+            bot: BOT,
+            to: dest,
+            token: address(usdc),
+            amount: 1 * USDC_DECIMALS,
+            deadline: block.timestamp + 300,
+            ref: _uniqueRef()
         });
         bytes memory sig = _signPayment(intent);
-        (bool ok,) = address(vault).call(
-            abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), "")
-        );
+        (bool ok,) = address(vault)
+            .call(abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), ""));
         return !ok;
     }
 
@@ -246,20 +264,25 @@ contract AxonVaultFuzzHarness {
         if (vault.isBotActive(fakeBot)) return true;
 
         AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
-            bot: fakeBot, to: RECIPIENT, token: address(usdc),
-            amount: 1 * USDC_DECIMALS, deadline: block.timestamp + 300, ref: _uniqueRef()
+            bot: fakeBot,
+            to: RECIPIENT,
+            token: address(usdc),
+            amount: 1 * USDC_DECIMALS,
+            deadline: block.timestamp + 300,
+            ref: _uniqueRef()
         });
 
         bytes32 structHash = keccak256(
-            abi.encode(PAYMENT_INTENT_TYPEHASH, intent.bot, intent.to, intent.token, intent.amount, intent.deadline, intent.ref)
+            abi.encode(
+                PAYMENT_INTENT_TYPEHASH, intent.bot, intent.to, intent.token, intent.amount, intent.deadline, intent.ref
+            )
         );
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", vault.DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(fakeBotPk, digest);
         bytes memory sig = abi.encodePacked(r, s, v);
 
-        (bool ok,) = address(vault).call(
-            abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), "")
-        );
+        (bool ok,) = address(vault)
+            .call(abi.encodeWithSelector(vault.executePayment.selector, intent, sig, address(0), 0, address(0), ""));
         return !ok;
     }
 }

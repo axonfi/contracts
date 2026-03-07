@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 contract TestNFT is ERC721 {
     uint256 private _nextTokenId;
 
-    constructor() ERC721("Axon Test NFT", "AXNFT") {}
+    constructor() ERC721("Axon Test NFT", "AXNFT") { }
 
     /// @notice Mint an NFT to any address. No restrictions — testnet only.
     function mint(address to) external returns (uint256 tokenId) {

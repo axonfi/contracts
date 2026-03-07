@@ -32,8 +32,16 @@ contract MockProtocol {
         emit ActionExecuted(msg.sender, data);
     }
 
+    /// @notice Payable action — receives ETH (simulates WETH.deposit, Lido.submit, etc.)
+    function payableAction() external payable {
+        emit PayableActionCalled(msg.sender, msg.value);
+    }
+    event PayableActionCalled(address indexed caller, uint256 value);
+
     /// @notice Always reverts (for failure tests).
     function failingAction() external pure {
         revert("MockProtocol: intentional failure");
     }
+
+    receive() external payable { }
 }

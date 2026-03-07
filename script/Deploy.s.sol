@@ -139,6 +139,22 @@ contract Deploy is Script {
             registry.approveDefaultToken(0x980B62Da83eFf3D4576C647993b0c1D7faf17c73); // WETH
         }
 
+        // ── Approve global protocols ────────────────────────────────────────
+        // These are usable in executeProtocol on ALL vaults (any function call allowed).
+        // Unlike default tokens (approve-only), global protocols support full interaction.
+        // Only WETH is globally approved — it's a basic utility (deposit/withdraw).
+        // Complex DeFi protocols (Aave, Compound, Lido) remain per-vault opt-in
+        // via vault.approveProtocol() for a smaller attack surface.
+        if (block.chainid == 8453) {
+            registry.approveProtocol(0x4200000000000000000000000000000000000006); // WETH
+        } else if (block.chainid == 84532) {
+            registry.approveProtocol(0x4200000000000000000000000000000000000006); // WETH
+        } else if (block.chainid == 42161) {
+            registry.approveProtocol(0x82aF49447D8a07e3bd95BD0d56f35241523fBab1); // WETH
+        } else if (block.chainid == 421614) {
+            registry.approveProtocol(0x980B62Da83eFf3D4576C647993b0c1D7faf17c73); // WETH
+        }
+
         vm.stopBroadcast();
 
         // ── Post-deployment log ───────────────────────────────────────────────

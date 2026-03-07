@@ -72,17 +72,18 @@ contract AxonVaultEchidna {
         vault.addRebalanceTokens(_toArray(address(weth)));
 
         AxonVault.SpendingLimit[] memory limits = new AxonVault.SpendingLimit[](1);
-        limits[0] = AxonVault.SpendingLimit({
-            amount: 50_000 * USDC_DECIMALS, maxCount: 0, windowSeconds: 86400
-        });
+        limits[0] = AxonVault.SpendingLimit({ amount: 50_000 * USDC_DECIMALS, maxCount: 0, windowSeconds: 86400 });
 
-        vault.addBot(BOT, AxonVault.BotConfigParams({
-            maxPerTxAmount: 10_000 * USDC_DECIMALS,
-            maxRebalanceAmount: 5_000 * USDC_DECIMALS,
-            spendingLimits: limits,
-            aiTriggerThreshold: 1_000 * USDC_DECIMALS,
-            requireAiVerification: false
-        }));
+        vault.addBot(
+            BOT,
+            AxonVault.BotConfigParams({
+                maxPerTxAmount: 10_000 * USDC_DECIMALS,
+                maxRebalanceAmount: 5_000 * USDC_DECIMALS,
+                spendingLimits: limits,
+                aiTriggerThreshold: 1_000 * USDC_DECIMALS,
+                requireAiVerification: false
+            })
+        );
 
         vault.approveProtocol(address(mockProtocol));
 
@@ -91,11 +92,18 @@ contract AxonVaultEchidna {
             uint256 amount = ((i + 1) * 100) * USDC_DECIMALS; // $100, $200, ..., $5000
             bytes32 ref = keccak256(abi.encodePacked("presigned", i));
             AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
-                bot: BOT, to: RECIPIENT, token: address(usdc),
-                amount: amount, deadline: type(uint256).max, ref: ref
+                bot: BOT, to: RECIPIENT, token: address(usdc), amount: amount, deadline: type(uint256).max, ref: ref
             });
             bytes32 structHash = keccak256(
-                abi.encode(PAYMENT_INTENT_TYPEHASH, intent.bot, intent.to, intent.token, intent.amount, intent.deadline, intent.ref)
+                abi.encode(
+                    PAYMENT_INTENT_TYPEHASH,
+                    intent.bot,
+                    intent.to,
+                    intent.token,
+                    intent.amount,
+                    intent.deadline,
+                    intent.ref
+                )
             );
             bytes32 digest = keccak256(abi.encodePacked("\x19\x01", vault.DOMAIN_SEPARATOR(), structHash));
             (uint8 v, bytes32 r, bytes32 s) = vm.sign(BOT_KEY, digest);
@@ -136,14 +144,20 @@ contract AxonVaultEchidna {
         if (amount > usdc.balanceOf(address(vault))) return;
 
         AxonVault.PaymentIntent memory intent = AxonVault.PaymentIntent({
-            bot: BOT, to: RECIPIENT, token: address(usdc),
-            amount: amount, deadline: type(uint256).max,
+            bot: BOT,
+            to: RECIPIENT,
+            token: address(usdc),
+            amount: amount,
+            deadline: type(uint256).max,
             ref: keccak256(abi.encodePacked("presigned", idx))
         });
 
-        (bool ok,) = address(vault).call(
-            abi.encodeWithSelector(vault.executePayment.selector, intent, _intentSigs[idx], address(0), 0, address(0), "")
-        );
+        (bool ok,) = address(vault)
+            .call(
+                abi.encodeWithSelector(
+                    vault.executePayment.selector, intent, _intentSigs[idx], address(0), 0, address(0), ""
+                )
+            );
         if (ok) {
             totalPaymentsOut += amount;
             paymentCount++;
@@ -165,7 +179,9 @@ contract AxonVaultEchidna {
 
         // Sign the swap intent
         bytes32 structHash = keccak256(
-            abi.encode(SWAP_INTENT_TYPEHASH, intent.bot, intent.toToken, intent.minToAmount, intent.deadline, intent.ref)
+            abi.encode(
+                SWAP_INTENT_TYPEHASH, intent.bot, intent.toToken, intent.minToAmount, intent.deadline, intent.ref
+            )
         );
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", vault.DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(BOT_KEY, digest);
@@ -176,9 +192,18 @@ contract AxonVaultEchidna {
             swapRouter.swap.selector, address(usdc), usdcAmount, address(weth), wethOut, address(vault)
         );
 
-        (bool ok,) = address(vault).call(
-            abi.encodeWithSelector(vault.executeSwap.selector, intent, sig, address(usdc), usdcAmount, address(swapRouter), swapCalldata)
-        );
+        (bool ok,) = address(vault)
+            .call(
+                abi.encodeWithSelector(
+                    vault.executeSwap.selector,
+                    intent,
+                    sig,
+                    address(usdc),
+                    usdcAmount,
+                    address(swapRouter),
+                    swapCalldata
+                )
+            );
         if (ok) swapCount++;
     }
 

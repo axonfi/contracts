@@ -8,4 +8,5 @@ interface IAxonRegistry {
     function usdcAddress() external view returns (address);
     function wethAddress() external view returns (address);
     function isDefaultToken(address token) external view returns (bool);
+    function isApprovedProtocol(address protocol) external view returns (bool);
 }
