@@ -10,7 +10,7 @@ set -euo pipefail
 #
 # Requires:
 #   - PRIVATE_KEY in .env (deployer = vault owner)
-#   - FACTORY or NEXT_PUBLIC_FACTORY_84532 in env / .env
+#   - FACTORY or FACTORY_ADDRESS_<chainId> in env / .env
 #   - cast (Foundry) installed
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -28,17 +28,11 @@ RELAYER_URL="${RELAYER_URL:-http://localhost:3000}"
 
 # Resolve factory address
 if [ -z "${FACTORY:-}" ]; then
-  # Use the LAST factory in the comma-separated list (newest)
-  RAW="${NEXT_PUBLIC_FACTORY_84532:-}"
+  RAW="${FACTORY_ADDRESS_84532:-}"
   if [ -z "$RAW" ]; then
-    # Fall back to relayer env var
-    RAW="${FACTORY_ADDRESS_84532:-}"
-  fi
-  if [ -z "$RAW" ]; then
-    echo "ERROR: No factory address. Set FACTORY=0x... or NEXT_PUBLIC_FACTORY_84532 in .env"
+    echo "ERROR: No factory address. Set FACTORY=0x... or FACTORY_ADDRESS_<chainId> in .env"
     exit 1
   fi
-  # Take last entry (newest factory)
   FACTORY=$(echo "$RAW" | tr ',' '\n' | tail -1 | tr -d ' ')
 fi
 

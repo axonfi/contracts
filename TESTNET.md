@@ -35,10 +35,10 @@ When you redeploy AxonRegistry, AxonVaultFactory, or create a new vault, update 
 1. **This file** (`TESTNET.md`) — addresses table above
 2. **Relayer `.env`** — `AXON_REGISTRY_<chainId>`, `FACTORY_ADDRESS_<chainId>`
 3. **Railway env** — same variables on the deployed relayer service
-4. **Dashboard `.env.local`** — `NEXT_PUBLIC_FACTORY_<chainId>`
-5. **Vercel env** — same variable on the deployed dashboard
-6. **MEMORY.md** — deployment state section
-7. **Register vault with relayer** — `curl -X POST /v1/metadata/register-vault`
+4. **MEMORY.md** — deployment state section
+5. **Register vault with relayer** — `curl -X POST /v1/metadata/register-vault`
+
+> **Note:** Dashboard fetches factory addresses from the relayer's `GET /v1/chains` endpoint — no dashboard env vars needed.
 
 ### Oracle Config (post-deploy)
 
